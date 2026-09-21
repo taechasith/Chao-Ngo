@@ -1,0 +1,31 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "chao-ngo-player",
+  "compatibility_date": "2026-09-19",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "chao-ngo-db",
+      "database_id": "7af31e7c-3d79-4eb3-a41e-0d9e28fc27b2"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "PUBLIC_ASSETS",
+      "bucket_name": "creativelabth-public"
+    },
+    {
+      "binding": "PRIVATE_UPLOADS",
+      "bucket_name": "creativelabth-private"
+    }
+  ]
+,
+  "main": "worker.ts",
+  "triggers": { "crons": ["0 * * * *"] }
+,
+  "assets": { "directory": "dist/client", "not_found_handling": "none", "binding": "ASSETS" }
+}

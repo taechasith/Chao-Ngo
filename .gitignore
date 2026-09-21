@@ -1,0 +1,25 @@
+node_modules/
+.next/
+.vinext/
+.wrangler/
+coverage/
+*.tsbuildinfo
+.env*
+!.env.example
+.dev.vars*
+!.dev.vars.example
+# Playwright CLI output (may contain credentials)
+.playwright-cli/
+/dist/
+
+# Local-only agent/project guides. The backend guide contains R2 credentials.
+.agents/
+skills-lock.json
+AGENT_RULES(3).md
+BACKEND_PHASE_GUIDE(2).md
+FRONTEND_PHASE_GUIDE(4).md
+
+# Original local content sources; runtime copies live under public/.
+/ChatGPT Image Sep 19, 2026, 01_24_59 AM.png
+/Screenshot 2026-09-19 061759.png
+/low_poly_covered_corpse.glb
