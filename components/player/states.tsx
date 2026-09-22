@@ -2,9 +2,17 @@ import { Panel } from "./panel";
 
 export function LoadingState() {
   return (
-    <Panel aria-live="polite" className="max-w-xl" tone="quiet">
-      <span className="player-eyebrow">MIND STATE / LOADING</span>
-      <p className="mt-3 text-sm leading-7 text-white/70">กำลังจัดวางข้อมูลในแฟ้ม</p>
+    <Panel aria-live="polite" className="player-loading-state" tone="quiet">
+      <div className="player-skeleton-shell" aria-label="กำลังโหลด" role="status">
+        <div className="player-skeleton-block player-skeleton-block--title" />
+        <div className="player-skeleton-block player-skeleton-block--line" />
+        <div className="player-skeleton-block player-skeleton-block--line short" />
+        <div className="player-skeleton-grid">
+          <div className="player-skeleton-card" />
+          <div className="player-skeleton-card" />
+          <div className="player-skeleton-card" />
+        </div>
+      </div>
     </Panel>
   );
 }

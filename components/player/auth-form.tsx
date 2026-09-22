@@ -7,6 +7,7 @@ import { Eye, EyeOff } from "lucide-react";
 
 type AuthFormProps = {
   mode: "login" | "signup";
+  redirectTo?: string;
 };
 
 type FormStatus =
@@ -22,7 +23,7 @@ function messageForFailure(status: number): string {
   return "ไม่สามารถดำเนินการได้ในขณะนี้";
 }
 
-export function AuthForm({ mode }: AuthFormProps) {
+export function AuthForm({ mode, redirectTo }: AuthFormProps) {
   const router = useRouter();
   const [status, setStatus] = useState<FormStatus>({ kind: "idle" });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -60,9 +61,7 @@ export function AuthForm({ mode }: AuthFormProps) {
           : "เข้าสู่ระบบสำเร็จ",
       });
 
-      if (!isSignup) {
-        router.replace("/onboarding");
-      }
+      if (!isSignup) router.replace(redirectTo ?? "/onboarding");
     } catch {
       setStatus({ kind: "error", message: "ไม่สามารถเชื่อมต่อกับระบบได้" });
     } finally {

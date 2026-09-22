@@ -29,6 +29,7 @@ export default function PlayPage() {
               <h2>NODE ZONE</h2>
               <p>ตามรอยหลักฐานผ่านเรื่องราวที่เชื่อมควอนตัมและอวกาศ คุณเลือกเริ่มจากคดีไหนก่อนก็ได้</p>
               <span className="text-sm text-white/60">2 คดีย่อย · Quantum · Space</span>
+              <span className="player-case-status"><span aria-hidden="true" />พร้อมสำรวจ · ยังไม่เริ่ม</span>
               <span className="player-button player-button--primary">เปิด NODE ZONE</span>
             </div>
           </Link>
@@ -40,10 +41,11 @@ export default function PlayPage() {
               <p>อีกชุดแฟ้มคดีที่กำลังถูกจัดเตรียม เมื่อหลักฐานพร้อม ระบบจะเปิดให้สำรวจ</p>
             </div>
             <div className="player-locked-subjects">
-              <span>Psychology</span>
-              <span>FinTech</span>
-              <span>Human-focused Biotech</span>
-              <span className="mt-2 text-white/70">ยังไม่เปิดให้เล่น</span>
+              <span><b>01</b>Psychology</span>
+              <span><b>02</b>FinTech</span>
+              <span><b>03</b>Human-focused Biotech</span>
+              <span className="player-case-status player-case-status--locked"><span aria-hidden="true" />ยังไม่เปิดให้เล่น</span>
+              <Link className="player-text-action" href="/play/ka-casefiles">รายละเอียดแฟ้ม →</Link>
             </div>
           </section>
         </section>

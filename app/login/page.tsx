@@ -4,7 +4,10 @@ import { AppShell } from "../../components/player/app-shell";
 import { AuthForm } from "../../components/player/auth-form";
 import { Panel } from "../../components/player/panel";
 
-export default function LoginPage() {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
+  const params = await searchParams;
+  const redirectTo = params.next?.startsWith("/") && !params.next.startsWith("//") ? params.next : undefined;
+
   return (
     <AppShell pageTitle="เข้าสู่ระบบ">
       <div className="player-auth-layout">
@@ -16,11 +19,11 @@ export default function LoginPage() {
         </header>
         <div data-player-reveal="primary">
           <Panel>
-            <AuthForm mode="login" />
+            <AuthForm mode="login" redirectTo={redirectTo} />
           </Panel>
           <p className="mt-5 text-sm text-white/70">
             ยังไม่มีบัญชี?{" "}
-            <Link className="text-[#bfe6e2] underline decoration-white/30 underline-offset-4" href="/signup">สร้างบัญชี</Link>
+            <Link className="text-[#bfe6e2] underline decoration-white/30 underline-offset-4" href={redirectTo ? `/signup?next=${encodeURIComponent(redirectTo)}` : "/signup"}>สร้างบัญชี</Link>
           </p>
         </div>
       </div>

@@ -55,11 +55,11 @@ export default async function NodeZonePage() {
 
         <section className="player-ai-strip" data-player-reveal="primary">
           <div>
-            <span className="player-eyebrow">GEMINI / AI คู่คิด</span>
-            <h2 className="mt-2">ติดตรงไหน ลองมองจากอีกมุม</h2>
-            <p>AI อาจตอบผิดได้ ตรวจคำตอบกับหลักฐานในแฟ้มคดีเสมอ</p>
+            <span className="player-eyebrow">REQUIRED / GEMINI / AI คู่คิด</span>
+            <h2 className="mt-2">ใช้ AI คู่คิดก่อนส่งคำตอบ</h2>
+            <p>เปิด Gemini เพื่อทดสอบคำอธิบายของคุณ แล้วบันทึกบทสนทนาเป็น PDF สำหรับขั้นตอนส่งคำตอบ</p>
           </div>
-          <a className="player-button" href="https://gemini.google.com/gem/45cb7e3f0314" rel="noopener noreferrer" target="_blank">เปิด AI คู่คิด</a>
+          <a className="player-button player-button--primary" href="https://gemini.google.com/gem/45cb7e3f0314" rel="noopener noreferrer" target="_blank">เปิด Gemini แล้วกลับมาแนบ PDF</a>
         </section>
       </div>
     </AppShell>

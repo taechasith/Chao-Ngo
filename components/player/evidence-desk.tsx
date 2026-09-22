@@ -19,12 +19,19 @@ export function EvidenceDesk({ initialSlug = "pre-case", nodes }: { initialSlug?
   const [opened, setOpened] = useState<Set<string>>(() => new Set());
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const [kindFilter, setKindFilter] = useState("all");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [viewedOnly, setViewedOnly] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const lineRef = useRef<HTMLDivElement>(null);
   const node = nodes?.find((item) => item.slug === selectedSlug) ?? nodes?.[0];
   const fileIndex = node?.files.findIndex((file) => file.id === activeFile) ?? -1;
   const file = fileIndex >= 0 ? node?.files[fileIndex] : undefined;
-  const filteredFiles = node?.files.filter((item) => kindFilter === "all" || item.kind === kindFilter) ?? [];
+  const filteredFiles = node?.files.filter((item) => {
+    const matchesKind = kindFilter === "all" || item.kind === kindFilter;
+    const matchesSearch = item.title.toLowerCase().includes(searchTerm.trim().toLowerCase());
+    const matchesViewed = !viewedOnly || opened.has(item.id);
+    return matchesKind && matchesSearch && matchesViewed;
+  }) ?? [];
   const visibleFiles = showAll ? filteredFiles : filteredFiles.slice(0, 6);
 
   useLayoutEffect(() => {
@@ -56,7 +63,7 @@ export function EvidenceDesk({ initialSlug = "pre-case", nodes }: { initialSlug?
               aria-current={item.id === node.id ? "step" : undefined}
               className="player-timeline-node"
               key={item.id}
-              onClick={() => { setSelectedSlug(item.slug); setVisited((previous) => new Set(previous).add(item.slug)); setShowAll(false); setKindFilter("all"); }}
+              onClick={() => { setSelectedSlug(item.slug); setVisited((previous) => new Set(previous).add(item.slug)); setShowAll(false); setKindFilter("all"); setSearchTerm(""); setViewedOnly(false); }}
               type="button"
             >
               <span className="player-timeline-number">{String(index).padStart(2, "0")}</span>
@@ -68,12 +75,18 @@ export function EvidenceDesk({ initialSlug = "pre-case", nodes }: { initialSlug?
               <div><span className="player-eyebrow">NODE ZONE / {nodeLabels[node.slug] ?? node.slug}</span><h3>{node.slug === "pre-case" || node.slug === "post-case" ? nodeLabels[node.slug] : node.title}</h3></div>
               <span className="player-file-count">{node.files.length} หลักฐาน</span>
             </header>
-            <label className="player-evidence-filter">ชนิดหลักฐาน
-              <select onChange={(event) => { setKindFilter(event.target.value); setShowAll(false); }} value={kindFilter}>
-                <option value="all">ทั้งหมด</option>
-                {[...new Set(node.files.map((item) => item.kind))].map((kind) => <option key={kind} value={kind}>{typeLabels[kind]}</option>)}
-              </select>
-            </label>
+            <div className="player-evidence-tools">
+              <label className="player-evidence-search">ค้นหา
+                <input onChange={(event) => { setSearchTerm(event.target.value); setShowAll(false); }} placeholder="ค้นจากชื่อหลักฐาน" type="search" value={searchTerm} />
+              </label>
+              <label className="player-evidence-filter">ชนิดหลักฐาน
+                <select onChange={(event) => { setKindFilter(event.target.value); setShowAll(false); }} value={kindFilter}>
+                  <option value="all">ทั้งหมด</option>
+                  {[...new Set(node.files.map((item) => item.kind))].map((kind) => <option key={kind} value={kind}>{typeLabels[kind]}</option>)}
+                </select>
+              </label>
+              <button aria-pressed={viewedOnly} className={`player-evidence-view-filter${viewedOnly ? " is-active" : ""}`} onClick={() => { setViewedOnly((value) => !value); setShowAll(false); }} type="button">{viewedOnly ? "ดูทั้งหมด" : "เฉพาะที่เปิดแล้ว"}</button>
+            </div>
             <div className="player-evidence-grid" id="evidence-files">
               {visibleFiles.map((item) => <button className="player-evidence-cell" key={item.id} onClick={() => openEvidence(item.id)} type="button">
                 <span className="player-evidence-meta"><span>EVIDENCE {String(node.files.indexOf(item) + 1).padStart(2, "0")}</span>{item.kind === "image" ? <ImageIcon aria-hidden="true" size={19} /> : item.kind === "audio" ? <Volume2 aria-hidden="true" size={19} /> : <FileText aria-hidden="true" size={19} />}</span>
@@ -82,7 +95,7 @@ export function EvidenceDesk({ initialSlug = "pre-case", nodes }: { initialSlug?
               </button>)}
             </div>
             {filteredFiles.length > 6 ? <button aria-controls="evidence-files" aria-expanded={showAll} className="player-button mt-3 w-full" onClick={() => setShowAll((value) => !value)} type="button">{showAll ? "ย่อรายการหลักฐาน" : `ดูหลักฐานทั้งหมด ${filteredFiles.length} ชิ้น`}</button> : null}
-            {!node.files.length ? <p className="player-empty-memory">ยังไม่มีไฟล์ในช่วงเหตุการณ์นี้</p> : null}
+            {!node.files.length ? <p className="player-empty-memory">ยังไม่มีไฟล์ในช่วงเหตุการณ์นี้</p> : !filteredFiles.length ? <p className="player-empty-memory">ไม่พบหลักฐานตามเงื่อนไขนี้ ลองล้างตัวกรองแล้วค้นใหม่</p> : null}
           </div>
         </div>
       )}

@@ -317,7 +317,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
           <p>ระบบรับคำตอบของงานวิจัยกำลังเตรียมเปิดใช้งาน</p>
           <div className="player-locked-reason">
             <strong>สิ่งที่กำลังรอ</strong>
-            <p>พื้นที่จัดเก็บข้อมูลส่วนตัวของงานวิจัยต้องพร้อมก่อน ระบบจึงจะเปิดรับคำตอบ post-test และไฟล์ AI chat ได้</p>
+            <p>การส่งคำตอบวิจัยยังไม่เปิดใช้งานบนระบบนี้ ระบบจะเปิดรับ post-test และไฟล์ AI chat เมื่อการตั้งค่าฝั่งงานวิจัยพร้อม</p>
           </div>
           <div className="flex flex-wrap gap-3">
             <Link className="player-button player-button--primary" href="/play">กลับไปที่แฟ้มคดี</Link>

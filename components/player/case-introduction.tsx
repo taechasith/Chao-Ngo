@@ -10,6 +10,7 @@ import { CaseProgress } from "./case-progress";
 export async function CaseIntroduction({
   description,
   image,
+  instructions,
   label,
   pageTitle,
   subgameId,
@@ -18,6 +19,7 @@ export async function CaseIntroduction({
 }: {
   description: string;
   image: string;
+  instructions: { title: string; body: string }[];
   label: string;
   pageTitle: string;
   subgameId: string;
@@ -58,16 +60,32 @@ export async function CaseIntroduction({
           </aside>
         </section>
 
+        <section className="player-case-brief" data-player-reveal="primary" aria-label="คำแนะนำการสืบคดี">
+          <div>
+            <span className="player-eyebrow">CASE BRIEF / วิธีเริ่มคิด</span>
+            <h2>อ่านหลักฐานเพื่อสร้างคำอธิบายของคุณ</h2>
+            <p>ไฟล์ README ของคดีถูกสรุปไว้ตรงนี้แล้ว คุณไม่จำเป็นต้องออกจากเกมไปเปิดไฟล์ต้นฉบับ</p>
+          </div>
+          <ol>
+            {instructions.map((instruction, index) => (
+              <li key={instruction.title}>
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                <div><strong>{instruction.title}</strong><p>{instruction.body}</p></div>
+              </li>
+            ))}
+          </ol>
+        </section>
+
         <EvidenceDesk initialSlug={subgameId.endsWith("space") ? "space" : "quantum"} nodes={nodes} />
 
         <section className="player-ai-strip" data-player-reveal="primary">
           <div>
-            <span className="player-eyebrow">AI คู่คิด / GEMINI</span>
-            <h2 className="mt-2">อยากเห็นหลักฐานจากอีกมุมหนึ่งไหม?</h2>
-            <p>AI ช่วยตั้งคำถามและอธิบายแนวคิดได้ แต่จะไม่ตัดสินคำตอบแทนคุณ</p>
-            <p>AI อาจตอบผิดได้ ตรวจคำตอบกับหลักฐานในแฟ้มคดีเสมอ</p>
+            <span className="player-eyebrow">REQUIRED / AI คู่คิด / GEMINI</span>
+            <h2 className="mt-2">ก่อนส่งคำตอบ ต้องคุยกับ AI คู่คิด</h2>
+            <p>ใช้ Gemini เพื่อถาม อธิบายแนวคิด และทดสอบคำอธิบายของคุณ จากนั้นบันทึกบทสนทนาเป็น PDF เพื่อแนบตอนส่งคำตอบ</p>
+            <p>AI อาจตอบผิดได้ ตรวจคำตอบกับหลักฐานในแฟ้มคดีเสมอ คำตอบสุดท้ายยังเป็นของคุณ</p>
           </div>
-          <a className="player-button" href="https://gemini.google.com/gem/45cb7e3f0314" rel="noopener noreferrer" target="_blank">เปิด Gemini</a>
+          <a className="player-button player-button--primary" href="https://gemini.google.com/gem/45cb7e3f0314" rel="noopener noreferrer" target="_blank">เปิด Gemini แล้วกลับมาแนบ PDF</a>
         </section>
       </div>
     </AppShell>

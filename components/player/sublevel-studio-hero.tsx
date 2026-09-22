@@ -4,7 +4,7 @@ export function SublevelStudioLandingPage() {
       <iframe
         className="absolute inset-0 block size-full border-0 bg-[#080808]"
         loading="eager"
-        src="/landing-pages/sublevel-studio.html?v=lantern-removed-2"
+        src="/landing-pages/sublevel-studio.html?v=jao-ngoh-case-entry-1"
         title="เจ้าเงาะ - Open-source science detective platform"
       />
     </div>

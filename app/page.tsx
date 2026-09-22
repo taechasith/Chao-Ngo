@@ -21,6 +21,19 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+      <section className="border-t border-white/10 bg-[#080808] px-4 py-10 sm:px-6 lg:px-10 lg:py-14" aria-label="จุดเริ่มต้นแฟ้มคดี">
+        <div className="mx-auto grid max-w-6xl gap-8 border-y border-white/15 py-6 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.55fr)] lg:items-end">
+          <div>
+            <p className="text-xs font-bold tracking-[0.12em] text-[#8fc9c5]">เจ้าเงาะ / CASE ENTRY</p>
+            <h2 className="mt-3 max-w-3xl font-display text-3xl leading-tight text-white sm:text-4xl">ภาพที่เห็นเป็นเพียงจุดเริ่มต้นของการสืบ</h2>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-white/65">เลือกแฟ้มคดี เปิด Timeline อ่านวัตถุพยาน แล้วใช้ AI คู่คิดเพื่อทดสอบคำอธิบายของคุณก่อนส่งคำตอบ</p>
+          </div>
+          <div className="grid gap-3 sm:flex sm:items-center sm:justify-end">
+            <Link className="inline-flex min-h-11 items-center justify-center border border-[#ff764d]/65 bg-[#ff764d]/15 px-4 text-sm font-bold text-white transition hover:bg-[#ff764d]/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ff9b7a]" href="/play">เปิดแฟ้มคดี</Link>
+            <span className="text-xs text-white/50">2 คดีพร้อมสำรวจ · AI chat จำเป็นก่อนส่ง</span>
+          </div>
+        </div>
+      </section>
     </main>
   );
 }

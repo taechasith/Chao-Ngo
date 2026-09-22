@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Panel, StatusBadge } from "./panel";
+import { GameRulesBrief } from "./game-rules-brief";
 
 type AnswerValue = null | number | string | string[];
 type SaveState = "idle" | "saving" | "saved" | "error";
@@ -372,6 +373,7 @@ export function OnboardingFlow() {
   if (!collectionEnabled) {
     return (
       <div className="player-onboarding">
+        <GameRulesBrief />
         <header className="player-page-heading" data-player-reveal="heading">
           <StatusBadge>BEFORE THE CASE / STEP 01</StatusBadge>
           <h1>ก่อนเริ่ม เราอยากให้คุณรู้ว่าข้อมูลอะไรจะถูกใช้</h1>
@@ -383,8 +385,8 @@ export function OnboardingFlow() {
             <span className="player-eyebrow">YOUR DECISION</span>
             <h2>ยังเริ่มไม่ได้</h2>
             <div className="player-system-note">
-              <strong>พื้นที่ส่วนตัวกำลังเตรียม</strong>
-              <p>พื้นที่จัดเก็บข้อมูลส่วนตัวของงานวิจัยยังไม่พร้อม กรุณาลองใหม่อีกครั้งภายหลัง</p>
+              <strong>การส่งข้อมูลวิจัยยังไม่เปิด</strong>
+              <p>คุณยังเปิดแฟ้มคดีที่เผยแพร่ได้ตามปกติ แต่ระบบยังไม่เปิดรับคำตอบ แบบสอบถาม และไฟล์บทสนทนา AI สำหรับงานวิจัย</p>
             </div>
             <p>คุณยังสามารถดูแฟ้มคดีที่เปิดให้สำรวจได้ โดยระบบจะไม่ส่งหรือบันทึกคำตอบวิจัยก่อนหน้านั้น</p>
             <Link className="player-button w-full" href="/play">กลับไปที่แฟ้มคดี</Link>
@@ -397,6 +399,7 @@ export function OnboardingFlow() {
   if (step < 0) {
     return (
       <div className="player-onboarding">
+        <GameRulesBrief />
         <header className="player-page-heading" data-player-reveal="heading">
           <StatusBadge>BEFORE THE CASE / STEP 01</StatusBadge>
           <h1>ก่อนเริ่ม เราอยากให้คุณรู้ว่าข้อมูลอะไรจะถูกใช้</h1>
@@ -445,6 +448,7 @@ export function OnboardingFlow() {
 
   return (
     <div className="player-onboarding">
+      <GameRulesBrief />
       <div className="player-page-heading flex max-w-none flex-wrap items-end justify-between gap-4" data-player-reveal="heading">
         <div>
           <StatusBadge>แบบสอบถามก่อนเล่น</StatusBadge>
@@ -641,6 +645,7 @@ function RecommendationResult({ recommendation }: { recommendation: Recommendati
 
   return (
     <div className="player-onboarding">
+      <GameRulesBrief />
       <div className="player-page-heading" data-player-reveal="heading">
         <StatusBadge>ข้อเสนอแนะ</StatusBadge>
         <h1>ลองเริ่มที่ {subgameName(recommendation.subgameId)}</h1>
