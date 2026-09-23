@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-export type AccountStatus = "checking" | "signed-in" | "signed-out";
+export type AccountStatus = "checking" | "signed-in" | "signed-out" | "unavailable";
 
 type GateCopy = {
   body: string;
@@ -41,14 +41,19 @@ function copyFor(redirectTo: string): GateCopy {
 export function AccountGate({ redirectTo, status }: { redirectTo: string; status: AccountStatus }) {
   const copy = copyFor(redirectTo);
   const checking = status === "checking";
+  const unavailable = status === "unavailable";
 
   return (
     <section className="player-account-gate" aria-live={checking ? "polite" : undefined} aria-labelledby="account-gate-title">
       <div className="player-account-gate-copy">
-        <span className="player-eyebrow">PLAYER ACCESS / {checking ? "CHECKING" : "BEFORE THE CASE"}</span>
-        <h1 id="account-gate-title">{checking ? "กำลังตรวจสอบแฟ้มของคุณ" : copy.heading}</h1>
-        <p>{checking ? "ระบบกำลังตรวจสอบพื้นที่สำหรับบันทึกความคืบหน้าและ Achievement ของคุณ" : copy.body}</p>
-        {!checking ? <div className="player-account-gate-actions">
+        <span className="player-eyebrow">PLAYER ACCESS / {checking ? "CHECKING" : unavailable ? "SETUP PENDING" : "BEFORE THE CASE"}</span>
+        <h1 id="account-gate-title">{checking ? "กำลังตรวจสอบแฟ้มของคุณ" : unavailable ? "บัญชีกำลังรอการเชื่อมต่อ D1" : copy.heading}</h1>
+        <p>{checking
+          ? "ระบบกำลังตรวจสอบพื้นที่สำหรับบันทึกความคืบหน้าและ Achievement ของคุณ"
+          : unavailable
+            ? "ยังไม่สามารถสร้างบัญชีหรือบันทึกความคืบหน้าได้จนกว่าฐานข้อมูล D1 จะพร้อม การเข้าถึงข้อมูลผู้เล่นและการส่งคำตอบจึงยังคงปิดไว้"
+            : copy.body}</p>
+        {!checking && !unavailable ? <div className="player-account-gate-actions">
           <Link className="player-button player-button--primary" href={`/signup?next=${encodeURIComponent(redirectTo)}`}>สร้างบัญชี</Link>
           <Link className="player-button" href={`/login?next=${encodeURIComponent(redirectTo)}`}>เข้าสู่ระบบ</Link>
         </div> : null}

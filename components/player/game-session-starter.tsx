@@ -15,6 +15,12 @@ export function GameSessionStarter({ gameId = "game-node-zone", subgameId }: { g
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       method: "POST",
+    }).then(async (response) => {
+      if (!response.ok) return;
+      const payload = await response.json() as { sessionId?: string };
+      if (payload.sessionId) {
+        try { window.sessionStorage.setItem(`jao-ngoh-session:${subgameId}`, payload.sessionId); } catch { /* Session storage is optional. */ }
+      }
     }).catch(() => undefined);
   }, [gameId, subgameId]);
 

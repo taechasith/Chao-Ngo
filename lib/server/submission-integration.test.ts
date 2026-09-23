@@ -7,6 +7,7 @@ import { env } from "./testing/cloudflare";
 import { aiChatUploadConsentVersion, consentVersion, dataNoticeVersion } from "./research-consent-copy";
 import { cleanExpiredResearch } from "./research-cleanup";
 import { recalculateCompletionForUser } from "./completion";
+import { getSubmissionRequirements } from "./submissions/requirements";
 import { isWithinPlayerMutationLimit } from "./request-limits";
 import { GET as getSubmission, POST as startSubmission } from "../../app/api/submissions/route";
 import { POST as consent } from "../../app/api/research-consent/route";
@@ -30,6 +31,7 @@ vi.mock("./auth", () => ({
 const owner = "b6-test-owner";
 const stranger = "b6-test-stranger";
 const subgameId = "subgame-node-zone-quantum";
+const kaSubgameId = "subgame-ka-fintech";
 let mf: Miniflare;
 const request = (method = "POST", body?: unknown, user: string | null = owner, origin = "https://example.test") => new Request(
   `https://example.test/api/submissions?subgameId=${subgameId}`,
@@ -41,6 +43,12 @@ const pdf = new TextEncoder().encode("%PDF-1.7\n1 0 obj <</Type /Catalog>> endob
 function fileRequest(bytes: Uint8Array = pdf, mime = "application/pdf", name = "chat.pdf", user = owner) {
   const form = new FormData();
   form.set("file", new File([bytes as BlobPart], name, { type: mime }));
+  return new Request("https://example.test/api/upload", { method: "POST", headers: { "x-test-user": user }, body: form });
+}
+function answerAttachmentRequest(user = stranger) {
+  const form = new FormData();
+  form.set("file", new File([new TextEncoder().encode("A local K.A. answer attachment.") as BlobPart], "answer.txt", { type: "text/plain" }));
+  form.set("kind", "answer_attachment");
   return new Request("https://example.test/api/upload", { method: "POST", headers: { "x-test-user": user }, body: form });
 }
 
@@ -110,6 +118,69 @@ describe("B6 real D1/private R2 contracts", () => {
     key = (await env.DB.prepare("SELECT private_r2_key FROM uploads WHERE submission_id = ?").bind(id).first<{ private_r2_key: string }>())!.private_r2_key;
     expect(await env.PRIVATE_UPLOADS.head(key)).not.toBeNull();
     expect(await env.PUBLIC_ASSETS.head(key)).toBeNull();
+  });
+
+  it("allows a K.A. text-or-attachment submission without post-test or AI-PDF consent", async () => {
+    const created = await startSubmission(request("POST", { subgameId: kaSubgameId }, stranger));
+    expect(created.status).toBe(201);
+    const body = await created.json() as {
+      submission: {
+        acknowledgement: unknown;
+        posttestForm: unknown;
+        requirements: { requiresAiChatPdf: boolean; requiresPosttest: boolean };
+        submissionId: string;
+      };
+    };
+    const kaSubmissionId = body.submission.submissionId;
+    expect(body.submission).toMatchObject({
+      acknowledgement: null,
+      posttestForm: null,
+      requirements: { requiresAiChatPdf: false, requiresPosttest: false },
+    });
+    expect((await acknowledge(request("POST", { acknowledged: true, consentVersion: aiChatUploadConsentVersion }, stranger), context(kaSubmissionId))).status).toBe(409);
+    expect((await upload(answerAttachmentRequest(), context(kaSubmissionId))).status).toBe(201);
+    expect((await finalize(request("POST", undefined, stranger), context(kaSubmissionId))).status).toBe(201);
+    expect(await env.DB.prepare(
+      "SELECT posttest_session_id, status FROM submissions WHERE id = ? AND user_id = ?",
+    ).bind(kaSubmissionId, stranger).first()).toMatchObject({ posttest_session_id: null, status: "submitted" });
+    expect(await env.DB.prepare(
+      `SELECT submissions.status,
+              games.status AS game_status,
+              subgames.status AS subgame_status,
+              EXISTS(
+                SELECT 1 FROM uploads
+                 WHERE uploads.submission_id = submissions.id
+                   AND uploads.user_id = submissions.user_id
+                   AND uploads.kind = 'answer_attachment'
+                   AND uploads.status IN ('uploaded', 'accepted')
+              ) AS answer_attachment_uploaded,
+              (SELECT value FROM app_metadata WHERE key = 'completion_auto_pass_submissions') AS auto_pass
+         FROM submissions
+         INNER JOIN subgames ON subgames.id = submissions.subgame_id
+         INNER JOIN games ON games.id = subgames.game_id
+        WHERE submissions.id = ?`,
+    ).bind(kaSubmissionId).first()).toMatchObject({
+      answer_attachment_uploaded: 1,
+      auto_pass: "true",
+      game_status: "playable",
+      status: "submitted",
+      subgame_status: "playable",
+    });
+    await expect(getSubmissionRequirements(env.DB, kaSubgameId)).resolves.toMatchObject({
+      requiresAiChatPdf: false,
+      requiresAnswerTextOrAttachment: true,
+      requiresPosttest: false,
+    });
+    const completion = await recalculateCompletionForUser(stranger);
+    expect(completion.completedSubgameIds).toContain(kaSubgameId);
+    expect(completion.requiredSubgameIds).not.toContain(kaSubgameId);
+    expect(completion.letterEligible).toBe(false);
+    expect(await env.DB.prepare(
+      "SELECT status FROM subgame_progress WHERE user_id = ? AND subgame_id = ?",
+    ).bind(stranger, kaSubgameId).first()).toMatchObject({ status: "completed" });
+    expect(await env.DB.prepare(
+      "SELECT id FROM achievements WHERE user_id = ? AND achievement_key = 'subgame_completed' AND subgame_id = ?",
+    ).bind(stranger, kaSubgameId).first()).not.toBeNull();
   });
 
   it("persists answers, rejects incomplete forms and makes completion idempotent", async () => {

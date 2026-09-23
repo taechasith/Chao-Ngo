@@ -748,9 +748,9 @@ body.machine #topnav,body.machine #layout{display:none}
       <a class="mind-card" href="/play/node-zone/space" target="_top" aria-label="Open Space case">
         <div class="cell with-dots"><div class="lines with-diagonal-lines"></div><span class="mind-no">02</span><h4 class="mind-title" data-ps>Space</h4></div>
       </a>
-      <div class="cell mind-card with-dots" aria-label="Psychology in progress"><div class="lines with-diagonal-lines"></div><span class="mind-no">03</span><h4 class="mind-title" data-ps>Psychology</h4><span class="mind-badge" data-ps>Coming soon</span></div>
-      <div class="cell mind-card with-dots" aria-label="FinTech in progress"><div class="lines with-diagonal-lines"></div><span class="mind-no">04</span><h4 class="mind-title" data-ps>FinTech</h4><span class="mind-badge" data-ps>Coming soon</span></div>
-      <div class="cell mind-card with-dots" aria-label="BioTech in progress"><div class="lines with-diagonal-lines"></div><span class="mind-no">05</span><h4 class="mind-title" data-ps>BioTech</h4><span class="mind-badge" data-ps>Coming soon</span></div>
+      <div class="cell mind-card with-dots" aria-label="The K.A. Casefiles open"><div class="lines with-diagonal-lines"></div><span class="mind-no">03</span><h4 class="mind-title" data-ps>THE K.A. CASEFILES</h4><span class="mind-badge" data-ps>NetLood City</span></div>
+      <div class="cell mind-card with-dots" aria-label="MAIMEE playable"><div class="lines with-diagonal-lines"></div><span class="mind-no">04</span><h4 class="mind-title" data-ps>MAIMEE</h4><span class="mind-badge" data-ps>FinTech · Open</span></div>
+      <div class="cell mind-card with-dots" aria-label="WA VE playable"><div class="lines with-diagonal-lines"></div><span class="mind-no">05</span><h4 class="mind-title" data-ps>WA VE</h4><span class="mind-badge" data-ps>Bio x Psychology · Open</span></div>
     </div>
   </section>
 
@@ -770,13 +770,13 @@ body.machine #topnav,body.machine #layout{display:none}
           <a class="go f-p" href="/play/node-zone" target="_top" data-ps><span>เปิด NODE ZONE</span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m11.1075 14.2752 4.2763-4.29004-4.2625-4.2625h1.9112l4.2625 4.27625-4.2763 4.27629h-1.9112ZM2.5 10.8102V9.17391h13.8188v1.63629H2.5Z"/></svg></a>
         </div>
       </article>
-      <article class="card primary is-locked">
+      <article class="card primary">
         <div class="meta framed"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
-          <p class="cats" data-ps>แฟ้มคดี 02 / ยังไม่เปิด</p>
+          <p class="cats" data-ps>แฟ้มคดี 02 / เล่นได้แล้ว</p>
           <h3 class="f-h3" data-ps>The K.A. Casefiles</h3>
-          <p class="desc f-p" data-ps>อีกชุดแฟ้มคดีที่กำลังถูกจัดเตรียม เมื่อหลักฐานพร้อม ระบบจะเปิดให้สำรวจ</p>
-          <div class="subjects f-p" data-ps><span>Psychology</span><span>FinTech</span><span>Human-focused Biotech</span></div>
-          <span class="go f-p" aria-disabled="true" data-ps><span>ดูสถานะ</span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m11.1075 14.2752 4.2763-4.29004-4.2625-4.2625h1.9112l4.2625 4.27625-4.2763 4.27629h-1.9112ZM2.5 10.8102V9.17391h13.8188v1.63629H2.5Z"/></svg></span>
+          <p class="desc f-p" data-ps>NetLood City เปิดสองคดีให้สำรวจผ่านหลักฐาน และให้คุณออกแบบวิธีลดความสูญเสียจากสิ่งที่พบ</p>
+          <div class="subjects f-p" data-ps><span>NetLood City</span><span>MAIMEE · FinTech</span><span>WA VE · Bio x Psychology</span></div>
+          <a class="go f-p" href="/play/ka-casefiles" target="_top" data-ps><span>เปิด THE K.A. CASEFILES</span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m11.1075 14.2752 4.2763-4.29004-4.2625-4.2625h1.9112l4.2625 4.27625-4.2763 4.27629h-1.9112ZM2.5 10.8102V9.17391h13.8188v1.63629H2.5Z"/></svg></a>
         </div>
       </article>
       <article class="card">
@@ -965,10 +965,10 @@ STATE
 
 CASEFILES
 NODE ZONE ........ เล่นได้แล้ว: Quantum / Space
-The K.A. Casefiles  ยังไม่เปิด
+THE K.A. CASEFILES . NetLood City: MAIMEE / WA VE
 
 THOUGHT PATH
-สงสัย -> สำรวจ -> เชื่อมโยง -> ถาม AI -> ตัดสินใจ
+สงสัย -> สำรวจ -> เชื่อมโยง -> ตรวจหลักฐาน -> ตัดสินใจ
 
 RESEARCH
 โครงการนี้ศึกษาประสบการณ์การเรียนรู้ผ่านเกมสืบสวนและ AI คู่คิด
@@ -1382,7 +1382,7 @@ const backboardTex = canvasTex(1024, 768, (g, w, h) => {
   g.strokeStyle = '#e0e0e0'; g.lineWidth = 12; g.strokeRect(384, 368, 256, 200);
 });
 const tickerSrc = document.createElement('canvas'); tickerSrc.width = 4096; tickerSrc.height = 64;
-{ const g = tickerSrc.getContext('2d'); g.fillStyle = '#000'; g.fillRect(0, 0, 4096, 64); g.font = '700 46px "LINESeedSansTH", "LINESeedSans", monospace'; g.textBaseline = 'middle'; g.fillStyle = '#ffffff'; g.fillText('เจ้าเงาะ   ///   SCIENCE DETECTIVE CASE SYSTEM   ///   NODE ZONE READY   ///   K.A. COMING SOON   ///   ', 0, 34); }
+{ const g = tickerSrc.getContext('2d'); g.fillStyle = '#000'; g.fillRect(0, 0, 4096, 64); g.font = '700 46px "LINESeedSansTH", "LINESeedSans", monospace'; g.textBaseline = 'middle'; g.fillStyle = '#ffffff'; g.fillText('เจ้าเงาะ   ///   SCIENCE DETECTIVE CASE SYSTEM   ///   NODE ZONE READY   ///   NETLOOD CITY READY: MAIMEE / WA VE   ///   ', 0, 34); }
 const tickerTex = canvasTex(1024, 64, (g, w, h) => { g.fillStyle = '#000'; g.fillRect(0, 0, w, h); }, { nearest: true, repeat: [1, 1] });
 const tickerMask = document.createElement('canvas'); tickerMask.width = 1024; tickerMask.height = 64;
 { const g = tickerMask.getContext('2d'); g.fillStyle = '#000'; g.fillRect(0, 0, 1024, 64); g.fillStyle = '#fff'; for (let y = 4; y < 64; y += 8) for (let x = 4; x < 1024; x += 8) { g.beginPath(); g.arc(x, y, 3, 0, Math.PI * 2); g.fill(); } }
@@ -2175,14 +2175,14 @@ const PORTFOLIO = [
     g.restore();
     const cx = 420 + Math.sin(t * 0.7) * 120, cy = 150 + Math.cos(t * 0.9) * 40; g.fillStyle = '#fff'; g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + 12, cy + 10); g.lineTo(cx + 5, cy + 11); g.lineTo(cx + 2, cy + 18); g.closePath(); g.fill();
   } },
-  { title: 'The K.A. Casefiles', kind: 'Casefile - Coming soon', desc: 'Second casefile path waiting for admin publishing.', draw(g, w, h, t) {
+  { title: 'The K.A. Casefiles', kind: 'Casefile - NetLood City', desc: 'Two playable case paths: MAIMEE and WA VE.', draw(g, w, h, t) {
     const gr = g.createLinearGradient(0, 0, w, h); gr.addColorStop(0, '#f6f0e8'); gr.addColorStop(1, '#e2d8cc'); g.fillStyle = gr; g.fillRect(0, 0, w, h);
     g.strokeStyle = 'rgba(255,255,255,0.5)'; g.lineWidth = 18; for (let x = -200; x < w + 200; x += 70) { g.beginPath(); g.moveTo(x, h); g.lineTo(x + 240, 0); g.stroke(); }
-    g.fillStyle = '#141414'; g.font = '600 12px "FCSubject"'; g.textBaseline = 'top'; g.textAlign = 'left'; g.fillText('K.A.', 24, 18); g.fillStyle = '#777'; ['Status', 'Script', 'Locked'].forEach((s, i) => g.fillText(s, 450 + i * 58, 18));
+    g.fillStyle = '#141414'; g.font = '600 12px "FCSubject"'; g.textBaseline = 'top'; g.textAlign = 'left'; g.fillText('K.A.', 24, 18); g.fillStyle = '#777'; ['MAIMEE', 'WA VE', 'OPEN'].forEach((s, i) => g.fillText(s, 450 + i * 58, 18));
     g.save(); g.shadowColor = 'rgba(0,0,0,0.35)'; g.shadowBlur = 30; g.shadowOffsetY = 18; g.fillStyle = '#141414'; g.beginPath(); g.roundRect(70, 120, 250, 170, 22); g.fill(); g.restore();
-    g.fillStyle = '#f0e9df'; g.beginPath(); g.roundRect(90, 140, 210, 130, 14); g.fill(); g.fillStyle = '#141414'; g.font = '700 22px "FCSubject"'; g.fillText('K.A.', 106, 152); g.font = '500 11px "FCSubject"'; g.fillText('coming soon', 106, 182);
-    g.fillStyle = '#141414'; g.font = '700 44px "FCSubject"'; g.fillText('K.A.', 350, 130); g.fillText('Coming soon', 350, 176); g.font = '500 13px "FCSubject"'; g.fillStyle = '#444'; g.fillText('Admin publish required.', 350, 240);
-    g.fillStyle = '#141414'; g.beginPath(); g.roundRect(350, 270, 130, 36, 18); g.fill(); g.fillStyle = '#fff'; g.font = '600 12px "FCSubject"'; g.fillText('Not open yet', 366, 281);
+    g.fillStyle = '#f0e9df'; g.beginPath(); g.roundRect(90, 140, 210, 130, 14); g.fill(); g.fillStyle = '#141414'; g.font = '700 22px "FCSubject"'; g.fillText('K.A.', 106, 152); g.font = '500 11px "FCSubject"'; g.fillText('NetLood City', 106, 182);
+    g.fillStyle = '#141414'; g.font = '700 44px "FCSubject"'; g.fillText('NETLOOD', 350, 130); g.fillText('CITY', 350, 176); g.font = '500 13px "FCSubject"'; g.fillStyle = '#444'; g.fillText('MAIMEE / WA VE', 350, 240);
+    g.fillStyle = '#141414'; g.beginPath(); g.roundRect(350, 270, 130, 36, 18); g.fill(); g.fillStyle = '#fff'; g.font = '600 12px "FCSubject"'; g.fillText('Open casefiles', 366, 281);
     const sx = ((t * 0.12) % 1.5 - 0.25) * w; const sg = g.createLinearGradient(sx - 120, 0, sx + 120, 0); sg.addColorStop(0, 'rgba(255,255,255,0)'); sg.addColorStop(0.5, 'rgba(255,255,255,0.45)'); sg.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = sg; g.fillRect(0, 0, w, h);
   } },
   { title: 'Pre-game Q&A', kind: 'Onboarding - Consent', desc: 'Project purpose, rules, disclosure, and pre-game questions.', draw(g, w, h, t) {
@@ -5111,10 +5111,10 @@ window.ThreeUITerrainPlume = { mountTerrainPlume, TERRAIN_PLUME_DEFAULTS, SCENE_
     ["", "p"],
     ["CASEFILES", "d"],
     ["NODE ZONE ........ เล่นได้แล้ว: Quantum / Space", "p"],
-    ["The K.A. Casefiles  ยังไม่เปิด", "p"],
+    ["THE K.A. CASEFILES . NetLood City: MAIMEE / WA VE", "p"],
     ["", "p"],
     ["THOUGHT PATH", "d"],
-    ["สงสัย -> สำรวจ -> เชื่อมโยง -> ถาม AI -> ตัดสินใจ", "p"],
+    ["สงสัย -> สำรวจ -> เชื่อมโยง -> ตรวจหลักฐาน -> ตัดสินใจ", "p"],
     ["", "p"],
     ["RESEARCH", "d"],
     ["โครงการนี้ศึกษาประสบการณ์การเรียนรู้ผ่านเกมสืบสวนและ AI คู่คิด", "p"],

@@ -1,12 +1,14 @@
+type RecommendationWeights = {
+  confidenceGap: number;
+  diagnosticFit: number;
+  interest: number;
+  problemStyle: number;
+};
+
 type RecommendationRule = {
-  field: string;
+  fields: string[];
   problemStyleKeys: string[];
-  weights: {
-    confidenceGap: number;
-    diagnosticFit: number;
-    interest: number;
-    problemStyle: number;
-  };
+  weights: RecommendationWeights;
 };
 
 export type RecommendationCandidate = {
@@ -35,10 +37,20 @@ function normalizedScaleValue(value: unknown): number {
 
 function parseRule(ruleJson: string): RecommendationRule | null {
   try {
-    const parsed = JSON.parse(ruleJson) as Partial<RecommendationRule>;
+    const parsed = JSON.parse(ruleJson) as Partial<RecommendationRule> & { field?: unknown };
+    const multiFields = Array.isArray(parsed.fields) && parsed.fields.every((value) => typeof value === "string")
+      ? parsed.fields
+      : null;
+    // Keep the original single-field grammar valid, including when a later rule
+    // adds an unrelated or malformed `fields` property.
+    const fields = multiFields && multiFields.length > 0
+      ? multiFields
+      : typeof parsed.field === "string"
+        ? [parsed.field]
+        : null;
 
     if (
-      typeof parsed.field !== "string" ||
+      !fields ||
       !Array.isArray(parsed.problemStyleKeys) ||
       parsed.problemStyleKeys.some((value) => typeof value !== "string") ||
       !parsed.weights ||
@@ -47,15 +59,19 @@ function parseRule(ruleJson: string): RecommendationRule | null {
       return null;
     }
 
-    const weights = parsed.weights as RecommendationRule["weights"];
+    const weights = parsed.weights as RecommendationWeights;
     return {
-      field: parsed.field,
+      fields,
       problemStyleKeys: parsed.problemStyleKeys,
       weights,
     };
   } catch {
     return null;
   }
+}
+
+function averageFieldValue(fields: readonly string[], readValue: (field: string) => number): number {
+  return fields.reduce((total, field) => total + readValue(field), 0) / fields.length;
 }
 
 export function calculateRecommendations(
@@ -76,8 +92,12 @@ export function calculateRecommendations(
         return [];
       }
 
-      const interest = normalizedScaleValue(answers.get(`field_interest_${rule.field}`));
-      const confidenceGap = 1 - normalizedScaleValue(answers.get(`field_familiarity_${rule.field}`));
+      const interest = averageFieldValue(rule.fields, (field) =>
+        normalizedScaleValue(answers.get(`field_interest_${field}`)),
+      );
+      const confidenceGap = averageFieldValue(rule.fields, (field) =>
+        1 - normalizedScaleValue(answers.get(`field_familiarity_${field}`)),
+      );
       const problemStyle =
         rule.problemStyleKeys.length === 0
           ? 0

@@ -7,10 +7,13 @@ type SubmitPageProps = {
 
 export default async function SubmitPage({ searchParams }: SubmitPageProps) {
   const { subgameId = "" } = await searchParams;
-  const validSubgameId = /^subgame-node-zone-(quantum|space)$/.test(subgameId) ? subgameId : "";
+  const validSubgameId = /^subgame-(?:node-zone-(?:quantum|space)|ka-(?:fintech|wa-ve))$/.test(subgameId)
+    ? subgameId
+    : "";
+  const guideKey = /^subgame-ka-(?:fintech|wa-ve)$/.test(validSubgameId) ? "ka-submit" : "submit";
 
   return (
-    <AppShell pageTitle="ส่งคำตอบ">
+    <AppShell guideKey={guideKey} pageTitle="ส่งคำตอบ">
       <SubmitFlow initialSubgameId={validSubgameId} />
     </AppShell>
   );

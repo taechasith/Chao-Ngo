@@ -1,6 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "chao-ngo-player",
+  "account_id": "c24fed68f8dc59cc339bd821d215bba8",
   "compatibility_date": "2026-09-19",
   "compatibility_flags": ["nodejs_compat"],
   "observability": {
@@ -9,8 +10,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "chao-ngo-db",
-      "database_id": "7af31e7c-3d79-4eb3-a41e-0d9e28fc27b2"
+      "database_name": "chao-ngo",
+      "database_id": "420393d7-6abf-4a43-bc4d-4f5f94a5b7e9"
     }
   ],
   "r2_buckets": [
@@ -28,6 +29,13 @@
   "triggers": { "crons": ["0 * * * *"] }
 ,
   "assets": { "directory": "dist/client", "not_found_handling": "none", "binding": "ASSETS" }
+,
+  "routes": [
+    {
+      "pattern": "chaongo.creativelabth.com",
+      "custom_domain": true
+    }
+  ]
 ,
 "vars": {
   "BETTER_AUTH_URL": "https://chaongo.creativelabth.com"

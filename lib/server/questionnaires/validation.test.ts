@@ -61,9 +61,39 @@ describe("recommendations", () => {
     ]);
 
     expect(candidates[0]).toMatchObject({
-      components: { diagnosticFit: 0, interest: 1, problemStyle: 1 },
+      components: { confidenceGap: 0.75, diagnosticFit: 0, interest: 1, problemStyle: 1 },
       ruleVersion: "1.0.0",
+      score: 0.8125,
       subgameId: "quantum",
+    });
+  });
+
+  it("averages multi-field interest and confidence gaps without changing tie ordering", () => {
+    const answers = new Map<string, unknown>([
+      ["field_interest_psychology", 5],
+      ["field_familiarity_psychology", 1],
+      ["field_interest_biotech", 3],
+      ["field_familiarity_biotech", 5],
+      ["preferred_problem_style", ["human_behavior"]],
+    ]);
+    const ruleJson =
+      '{"fields":["psychology","biotech"],"problemStyleKeys":["human_behavior","biology_health"],"weights":{"interest":0.5,"problemStyle":0,"confidenceGap":0.5,"diagnosticFit":0}}';
+
+    const candidates = calculateRecommendations(answers, [
+      { ruleJson, subgameId: "zeta", version: "netlood-city-v1" },
+      { ruleJson, subgameId: "alpha", version: "netlood-city-v1" },
+    ]);
+
+    expect(candidates.map((candidate) => candidate.subgameId)).toEqual(["alpha", "zeta"]);
+    expect(candidates[0]).toMatchObject({
+      components: {
+        confidenceGap: 0.5,
+        diagnosticFit: 0,
+        interest: 0.75,
+        problemStyle: 0.5,
+      },
+      ruleVersion: "netlood-city-v1",
+      score: 0.625,
     });
   });
 });

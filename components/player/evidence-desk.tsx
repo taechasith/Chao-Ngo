@@ -4,16 +4,33 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Download, ExternalLink, FileText, Image as ImageIcon, Minus, Plus, RotateCcw, Volume2, X } from "lucide-react";
 import { gsap } from "gsap";
 import type { PlayerEvidence, PlayerTimelineNode } from "../../lib/server/content/player-evidence";
+import { HelpButton } from "./help-button";
 import { PlayerDialog } from "./player-dialog";
 
-const nodeLabels: Record<string, string> = {
+const defaultNodeLabels: Record<string, string> = {
   "pre-case": "ก่อนคดี", quantum: "คดีควอนตัม", space: "คดีอวกาศ", "post-case": "บันทึกหลังคดี",
 };
 const typeLabels: Record<PlayerEvidence["kind"], string> = {
   image: "ภาพ", pdf: "PDF", text: "ข้อความ / ข้อมูล", audio: "เสียง", video: "วิดีโอ", other: "ไฟล์",
 };
 
-export function EvidenceDesk({ initialSlug = "pre-case", nodes }: { initialSlug?: string; nodes: PlayerTimelineNode[] | null }) {
+type EvidenceDeskProps = {
+  gameTitle?: string;
+  guideScope?: string;
+  initialSlug?: string;
+  nodeLabels?: Record<string, string>;
+  nodes: PlayerTimelineNode[] | null;
+  subgameId?: string;
+};
+
+export function EvidenceDesk({
+  gameTitle = "NODE ZONE",
+  guideScope = "case",
+  initialSlug = "pre-case",
+  nodeLabels = defaultNodeLabels,
+  nodes,
+  subgameId,
+}: EvidenceDeskProps) {
   const [selectedSlug, setSelectedSlug] = useState(initialSlug);
   const [visited, setVisited] = useState<Set<string>>(() => new Set([initialSlug]));
   const [opened, setOpened] = useState<Set<string>>(() => new Set());
@@ -45,6 +62,22 @@ export function EvidenceDesk({ initialSlug = "pre-case", nodes }: { initialSlug?
   function openEvidence(id: string) {
     setActiveFile(id);
     setOpened((previous) => new Set(previous).add(id));
+    void recordActivity({ assetId: id, eventType: "evidence_opened" });
+  }
+
+  function recordActivity(input: { assetId: string; eventType: "evidence_opened" } | { eventType: "timeline_node_opened"; timelineNodeId: string }) {
+    const activitySubgameId = subgameId ?? (initialSlug === "quantum" || initialSlug === "space" ? `subgame-node-zone-${initialSlug}` : null);
+    if (!activitySubgameId) return;
+    let sessionId: string | null;
+    try { sessionId = window.sessionStorage.getItem(`jao-ngoh-session:${activitySubgameId}`); } catch { return; }
+    if (!sessionId) return;
+    const eventId = crypto.randomUUID();
+    void fetch(`/api/player-sessions/${sessionId}/activity-events`, {
+      body: JSON.stringify({ ...input, eventId }),
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    }).catch(() => undefined);
   }
 
   return (
@@ -57,22 +90,22 @@ export function EvidenceDesk({ initialSlug = "pre-case", nodes }: { initialSlug?
         <div className="player-empty-memory"><p>{nodes ? "ยังไม่มีหลักฐานที่เปิดให้สำรวจ" : "โหลดโต๊ะหลักฐานไม่ได้ในขณะนี้"}</p><button className="player-button mt-4" onClick={() => window.location.reload()} type="button">ลองอีกครั้ง</button></div>
       ) : (
         <div className="player-timeline-layout">
-          <nav aria-label="ช่วงเหตุการณ์ใน NODE ZONE" className="player-timeline-spine">
+          <nav aria-label={`ช่วงเหตุการณ์ใน ${gameTitle}`} className="player-timeline-spine" data-guide={`${guideScope}-timeline`}>
             <div aria-hidden="true" className="player-timeline-line" ref={lineRef} />
             {nodes.map((item, index) => <button
               aria-current={item.id === node.id ? "step" : undefined}
               className="player-timeline-node"
               key={item.id}
-              onClick={() => { setSelectedSlug(item.slug); setVisited((previous) => new Set(previous).add(item.slug)); setShowAll(false); setKindFilter("all"); setSearchTerm(""); setViewedOnly(false); }}
+              onClick={() => { setSelectedSlug(item.slug); setVisited((previous) => new Set(previous).add(item.slug)); setShowAll(false); setKindFilter("all"); setSearchTerm(""); setViewedOnly(false); void recordActivity({ eventType: "timeline_node_opened", timelineNodeId: item.id }); }}
               type="button"
             >
               <span className="player-timeline-number">{String(index).padStart(2, "0")}</span>
               <span><strong>{nodeLabels[item.slug] ?? item.title}</strong><small>{item.id === node.id ? "กำลังเปิด" : visited.has(item.slug) ? "เปิดแล้วในครั้งนี้" : `${item.files.length} หลักฐาน`}</small></span>
             </button>)}
           </nav>
-          <div className="player-timeline-event" id="evidence">
+          <div className="player-timeline-event" data-guide={`${guideScope}-evidence`} id="evidence">
             <header className="player-event-heading">
-              <div><span className="player-eyebrow">NODE ZONE / {nodeLabels[node.slug] ?? node.slug}</span><h3>{node.slug === "pre-case" || node.slug === "post-case" ? nodeLabels[node.slug] : node.title}</h3></div>
+              <div><span className="player-eyebrow">{gameTitle} / {nodeLabels[node.slug] ?? node.slug}</span><h3>{node.slug === "pre-case" || node.slug === "post-case" ? nodeLabels[node.slug] : node.title}</h3></div>
               <span className="player-file-count">{node.files.length} หลักฐาน</span>
             </header>
             <div className="player-evidence-tools">
@@ -100,16 +133,16 @@ export function EvidenceDesk({ initialSlug = "pre-case", nodes }: { initialSlug?
         </div>
       )}
       {file && node ? <PlayerDialog className="player-evidence-dialog" label={`หลักฐาน ${file.title}`} onClose={() => setActiveFile(null)}>
-        <header className="player-viewer-toolbar">
+        <header className="player-viewer-toolbar" data-guide="evidence-viewer">
           <button className="player-text-action" onClick={() => setActiveFile(null)} type="button"><ArrowLeft aria-hidden="true" size={16} /> กลับ Timeline</button>
           <span className="player-eyebrow">EVIDENCE {String(fileIndex + 1).padStart(2, "0")} / {node.files.length}</span>
           <button aria-label="ปิดหลักฐาน" className="player-close-button" onClick={() => setActiveFile(null)} title="ปิดหลักฐาน" type="button"><X aria-hidden="true" size={20} /></button>
         </header>
-        <div className="player-viewer-layout">
+        <div className="player-viewer-layout" data-guide="evidence-controls">
           <EvidenceContent file={file} key={file.id} />
-          <aside className="player-evidence-rail">
+          <aside className="player-evidence-rail" data-guide="evidence-context">
             <div><span className="player-eyebrow">สิ่งที่คุณกำลังตรวจ</span><h2>{file.title}</h2></div>
-            <dl><div><dt>ชนิด</dt><dd>{typeLabels[file.kind]}</dd></div><div><dt>แฟ้มคดี</dt><dd>NODE ZONE</dd></div><div><dt>ช่วงเหตุการณ์</dt><dd>{nodeLabels[node.slug] ?? node.title}</dd></div></dl>
+            <dl><div><dt>ชนิด</dt><dd>{typeLabels[file.kind]}</dd></div><div><dt>แฟ้มคดี</dt><dd>{gameTitle}</dd></div><div><dt>ช่วงเหตุการณ์</dt><dd>{nodeLabels[node.slug] ?? node.title}</dd></div></dl>
             <p className="player-viewer-visit">เปิดแล้วในการเยี่ยมชมครั้งนี้</p>
             <div className="player-viewer-pagination">
               <button aria-label="หลักฐานก่อนหน้า" className="player-button" disabled={fileIndex <= 0} onClick={() => openEvidence(node.files[fileIndex - 1].id)} title="หลักฐานก่อนหน้า" type="button"><ArrowLeft aria-hidden="true" size={19} /></button>
@@ -117,6 +150,7 @@ export function EvidenceDesk({ initialSlug = "pre-case", nodes }: { initialSlug?
               <button aria-label="หลักฐานถัดไป" className="player-button" disabled={fileIndex >= node.files.length - 1} onClick={() => openEvidence(node.files[fileIndex + 1].id)} title="หลักฐานถัดไป" type="button"><ArrowRight aria-hidden="true" size={19} /></button>
             </div>
             {file.url ? <a className="player-text-action" href={file.url} rel="noopener noreferrer" target="_blank">เปิดไฟล์ต้นฉบับ <ExternalLink aria-hidden="true" size={15} /></a> : null}
+            <HelpButton compact guideKey="evidence-viewer" pageTitle={`หลักฐานใน ${gameTitle}`} />
           </aside>
         </div>
       </PlayerDialog> : null}

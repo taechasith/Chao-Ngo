@@ -26,11 +26,11 @@ export default function HomePage() {
           <div>
             <p className="text-xs font-bold tracking-[0.12em] text-[#8fc9c5]">เจ้าเงาะ / CASE ENTRY</p>
             <h2 className="mt-3 max-w-3xl font-display text-3xl leading-tight text-white sm:text-4xl">ภาพที่เห็นเป็นเพียงจุดเริ่มต้นของการสืบ</h2>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-white/65">เลือกแฟ้มคดี เปิด Timeline อ่านวัตถุพยาน แล้วใช้ AI คู่คิดเพื่อทดสอบคำอธิบายของคุณก่อนส่งคำตอบ</p>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-white/65">เลือกแฟ้มคดี เปิด Timeline อ่านวัตถุพยาน แล้วทดสอบคำอธิบายของคุณกับหลักฐานก่อนส่งคำตอบตามเงื่อนไขของแต่ละคดี</p>
           </div>
           <div className="grid gap-3 sm:flex sm:items-center sm:justify-end">
             <Link className="inline-flex min-h-11 items-center justify-center border border-[#ff764d]/65 bg-[#ff764d]/15 px-4 text-sm font-bold text-white transition hover:bg-[#ff764d]/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ff9b7a]" href="/play">เปิดแฟ้มคดี</Link>
-            <span className="text-xs text-white/50">2 คดีพร้อมสำรวจ · AI chat จำเป็นก่อนส่ง</span>
+            <span className="text-xs text-white/50">4 คดีย่อยพร้อมสำรวจ · เงื่อนไขการส่งขึ้นกับแฟ้มคดี</span>
           </div>
         </div>
       </section>

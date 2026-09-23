@@ -5,6 +5,7 @@ import { AppShell } from "../../../components/player/app-shell";
 import { StatusBadge } from "../../../components/player/panel";
 import { EvidenceDesk } from "../../../components/player/evidence-desk";
 import { getPlayerTimeline } from "../../../lib/server/content/player-evidence";
+import { InvestigativeAction, InvestigativeActionMarker } from "../../../components/player/investigative-action";
 
 const cases = [
   {
@@ -45,22 +46,23 @@ export default async function NodeZonePage() {
                 <h2>{item.name}</h2>
                 <strong className="text-sm text-white/85">{item.thai}</strong>
                 <p>{item.description}</p>
-                <span className="player-button player-button--primary w-fit">เปิดแฟ้มคดี</span>
+                <InvestigativeActionMarker>เปิดแฟ้มคดี</InvestigativeActionMarker>
               </div>
             </Link>
           ))}
         </section>
 
-        <EvidenceDesk nodes={nodes} />
+        <EvidenceDesk guideScope="node-zone" nodes={nodes} />
 
-        <section className="player-ai-strip" data-player-reveal="primary">
+        <section className="player-ai-strip" data-guide="node-zone-ai" data-player-reveal="primary">
           <div>
             <span className="player-eyebrow">REQUIRED / GEMINI / AI คู่คิด</span>
             <h2 className="mt-2">ใช้ AI คู่คิดก่อนส่งคำตอบ</h2>
             <p>เปิด Gemini เพื่อทดสอบคำอธิบายของคุณ แล้วบันทึกบทสนทนาเป็น PDF สำหรับขั้นตอนส่งคำตอบ</p>
           </div>
-          <a className="player-button player-button--primary" href="https://gemini.google.com/gem/45cb7e3f0314" rel="noopener noreferrer" target="_blank">เปิด Gemini แล้วกลับมาแนบ PDF</a>
+          <InvestigativeAction href="https://gemini.google.com/gem/45cb7e3f0314" rel="noopener noreferrer" target="_blank">เปิด Gemini ↗</InvestigativeAction>
         </section>
+        <div data-guide="node-zone-submit"><InvestigativeAction href="/submit">ส่งคำตอบเมื่อพร้อม</InvestigativeAction></div>
       </div>
     </AppShell>
   );

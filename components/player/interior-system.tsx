@@ -35,9 +35,9 @@ export function DossierPanel({ image, alt, eyebrow, title, subtitle, children }:
   );
 }
 
-export function CasePanel({ eyebrow, title, children }: { eyebrow: string; title: string; children: ReactNode }) {
+export function CasePanel({ eyebrow, title, children, guideTarget }: { eyebrow: string; title: string; children: ReactNode; guideTarget?: string }) {
   return (
-    <section className="interior-case-panel">
+    <section className="interior-case-panel" data-guide={guideTarget}>
       <span className="player-eyebrow">{eyebrow}</span>
       <h2>{title}</h2>
       {children}
@@ -64,9 +64,9 @@ export function SystemStatus({ label, children, tone = "teal" }: { label: string
   );
 }
 
-export function DecisionPanel({ eyebrow, title, children, action }: { eyebrow: string; title: string; children: ReactNode; action?: ReactNode }) {
+export function DecisionPanel({ eyebrow, title, children, action, guideTarget }: { eyebrow: string; title: string; children: ReactNode; action?: ReactNode; guideTarget?: string }) {
   return (
-    <aside className="interior-decision-panel">
+    <aside className="interior-decision-panel" data-guide={guideTarget}>
       <span className="player-eyebrow">{eyebrow}</span>
       <h2>{title}</h2>
       <div className="interior-decision-copy">{children}</div>

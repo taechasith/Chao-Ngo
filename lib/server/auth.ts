@@ -28,17 +28,11 @@ export function getAuth() {
     baseURL: readiness.baseURL,
     database: bindings.DB,
     emailAndPassword: {
-      autoSignIn: false,
+      autoSignIn: true,
       enabled: true,
       maxPasswordLength: 128,
       minPasswordLength: 12,
-      requireEmailVerification: true,
       revokeSessionsOnPasswordReset: true,
-    },
-    emailVerification: {
-      autoSignInAfterVerification: false,
-      sendOnSignIn: false,
-      sendOnSignUp: false,
     },
     rateLimit: {
       customRules: {

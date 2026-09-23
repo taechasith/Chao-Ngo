@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { AppShell } from "../../components/player/app-shell";
 import { StatusBadge } from "../../components/player/panel";
+import { InvestigativeActionMarker } from "../../components/player/investigative-action";
 
 export default function PlayPage() {
   return (
@@ -30,22 +31,21 @@ export default function PlayPage() {
               <p>ตามรอยหลักฐานผ่านเรื่องราวที่เชื่อมควอนตัมและอวกาศ คุณเลือกเริ่มจากคดีไหนก่อนก็ได้</p>
               <span className="text-sm text-white/60">2 คดีย่อย · Quantum · Space</span>
               <span className="player-case-status"><span aria-hidden="true" />พร้อมสำรวจ · ยังไม่เริ่ม</span>
-              <span className="player-button player-button--primary">เปิด NODE ZONE</span>
+              <InvestigativeActionMarker>เปิด NODE ZONE</InvestigativeActionMarker>
             </div>
           </Link>
 
-          <section aria-labelledby="ka-title" className="player-locked-case">
+          <section aria-labelledby="ka-title" className="player-locked-case player-locked-case--available">
             <div className="grid gap-4">
-              <span className="player-eyebrow">แฟ้มคดี 02 / ยังไม่เปิด</span>
+              <span className="player-eyebrow">แฟ้มคดี 02 / เล่นได้แล้ว</span>
               <h2 id="ka-title">The K.A. Casefiles</h2>
-              <p>อีกชุดแฟ้มคดีที่กำลังถูกจัดเตรียม เมื่อหลักฐานพร้อม ระบบจะเปิดให้สำรวจ</p>
+              <p>NetLood City เปิดแฟ้มคดีสองเส้นทางให้สำรวจผ่านหลักฐาน และให้คุณออกแบบวิธีลดความสูญเสียจากสิ่งที่พบ</p>
             </div>
             <div className="player-locked-subjects">
-              <span><b>01</b>Psychology</span>
-              <span><b>02</b>FinTech</span>
-              <span><b>03</b>Human-focused Biotech</span>
-              <span className="player-case-status player-case-status--locked"><span aria-hidden="true" />ยังไม่เปิดให้เล่น</span>
-              <Link className="player-text-action" href="/play/ka-casefiles">รายละเอียดแฟ้ม →</Link>
+              <span><b>01</b>คดี MAIMEE · FinTech</span>
+              <span><b>02</b>คดี WA VE · Bio x Psychology</span>
+              <span className="player-case-status"><span aria-hidden="true" />พร้อมสำรวจ</span>
+              <Link className="player-text-action" href="/play/ka-casefiles">เปิด THE K.A. CASEFILES →</Link>
             </div>
           </section>
         </section>

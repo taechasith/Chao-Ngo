@@ -231,7 +231,10 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
             recommendation_rules.version
        FROM recommendation_rules
        INNER JOIN subgames ON subgames.id = recommendation_rules.target_subgame_id
-      WHERE recommendation_rules.active = 1 AND subgames.status = 'playable'`,
+       INNER JOIN games ON games.id = subgames.game_id
+      WHERE recommendation_rules.active = 1
+        AND games.status = 'playable'
+        AND subgames.status = 'playable'`,
   ).all<{
     rule_json: string;
     target_subgame_id: string;

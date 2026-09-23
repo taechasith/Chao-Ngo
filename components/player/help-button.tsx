@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, ArrowRight, CircleHelp, SkipForward, X } from "lucide-react";
 
@@ -16,8 +16,26 @@ type HelpButtonProps = {
   pageTitle: string;
 };
 
+const kaCaseGuideSteps: GuideStep[] = [
+  { target: "ka-objective", title: "เริ่มจากภารกิจของคดี", body: "สร้างคำอธิบายที่ยึดหลักฐาน ไม่ต้องรีบเลือกคำตอบเดียวตั้งแต่ต้น" },
+  { target: "ka-brief", title: "อ่าน Case Brief อย่างเป็นระบบ", body: "ระบุสิ่งที่แต่ละไฟล์ยืนยันได้ สิ่งที่ยังอนุมาน และคำถามที่ยังเปิดอยู่" },
+  { target: "ka-case-timeline", title: "ย้อนดูบริบทและลำดับเหตุการณ์", body: "เปิด NetLood City บุคลากร และแฟ้มคดีเพื่อเชื่อมโยงข้อมูลจากหลายมุม" },
+  { target: "ka-case-evidence", title: "ตรวจหลักฐานทีละชิ้น", body: "ใช้หลักฐานอย่างน้อยสามชิ้นจากอย่างน้อยสองประเภท และบอกผลต่อสมมติฐานของคุณ" },
+  { target: "ka-submit", title: "ส่งคำอธิบายเมื่อพร้อม", body: "ส่งเป็นข้อความในระบบหรือไฟล์หนึ่งชิ้น โดยสรุปเหตุ ไทม์ไลน์ หลักฐาน ความไม่แน่นอน และแนวทางป้องกัน" },
+];
+
 const guideSteps: Record<string, GuideStep[]> = {
+  settings: [
+    { target: "settings-auto-guide", title: "ให้เจ้าเงาะช่วยแนะนำไหม?", body: "เปิดไว้ถ้าคุณต้องการให้คำแนะนำปรากฏเมื่อพบระบบใหม่ครั้งแรก" },
+    { target: "settings-reset-guides", title: "อยากเริ่มคำแนะนำใหม่?", body: "ใช้ปุ่มนี้เพื่อให้ระบบถือว่าคุณยังไม่เคยดูคำแนะนำ" },
+    { target: "settings-motion", title: "ปรับการเคลื่อนไหว", body: "เลือกให้ระบบทำตามอุปกรณ์ ลดการเคลื่อนไหว หรือปิดทั้งหมด" },
+    { target: "settings-sound", title: "เสียงตอบสนอง", body: "เปิดหรือปิดเสียง UI ได้จากตรงนี้" },
+    { target: "settings-text-size", title: "ปรับขนาดตัวอักษร", body: "เลือกขนาดที่อ่านสบายที่สุด" },
+  ],
   timeline: [
+    { target: "timeline", title: "Timeline คือภาพรวมของเรื่อง", body: "แต่ละช่วงแสดงเหตุการณ์และข้อมูลที่เกี่ยวข้องกับเรื่อง คุณเปิดดูช่วงต่าง ๆ ได้ตามที่สนใจ" },
+    { target: "timeline-subgame", title: "คดีจะอยู่ใน Timeline", body: "คดีที่เปิดเล่นได้ปรากฏเป็นจุดใน Timeline และคุณไม่จำเป็นต้องเล่นตามลำดับ" },
+    { target: "help-control", title: "เรียกเจ้าเงาะได้เสมอ", body: "กด ช่วยเหลือ เพื่อเปิดคำแนะนำของหน้าที่คุณกำลังอยู่ได้ทุกเมื่อ" },
     { target: "node-zone-timeline", title: "Timeline เริ่มตรงนี้", body: "เลือกช่วงเหตุการณ์ที่อยากเปิดก่อนได้ คุณไม่จำเป็นต้องรู้เรื่องทั้งหมดก่อนเริ่ม" },
     { target: "node-zone-evidence", title: "เปิดวัตถุพยานทีละชิ้น", body: "ไฟล์ในแต่ละช่วงช่วยให้คุณเห็นบริบท หลักฐาน และความเชื่อมโยงของเรื่อง" },
     { target: "node-zone-ai", title: "AI คือขั้นตอนของการสืบ", body: "ใช้ AI คู่คิดตามเงื่อนไขของคดี แล้วเก็บบทสนทนาเป็น PDF สำหรับตอนส่งคำตอบ" },
@@ -39,6 +57,19 @@ const guideSteps: Record<string, GuideStep[]> = {
     { target: "case-ai", title: "ใช้ AI เพื่อมองข้อมูลอีกมุม", body: "ใช้ AI คู่คิดเพื่อถามหรือทดสอบแนวคิด แล้วตรวจกลับกับหลักฐานในแฟ้ม" },
     { target: "case-submit", title: "พร้อมแล้วค่อยส่งคำตอบ", body: "เมื่อคำอธิบายของคุณพร้อม ให้ทำ post-test และแนบ PDF บทสนทนากับ AI" },
   ],
+  "ka-casefiles": [
+    { target: "ka-overview", title: "แฟ้ม NetLood City เปิดแล้ว", body: "เลือกคดีที่คุณอยากสำรวจก่อนได้ ทั้งสองคดีใช้แนวทางอ่านหลักฐานและการส่งคำอธิบายร่วมกัน" },
+    { target: "ka-case-selection", title: "เลือกหนึ่งคดีเพื่อเริ่ม", body: "MAIMEE เป็นคดี FinTech และ WA VE รวมบริบท Bio x Psychology ไว้ในคดีเดียว" },
+    { target: "help-control", title: "เรียกคำแนะนำได้เสมอ", body: "กด ช่วยเหลือ เพื่อย้อนกลับมาดูขั้นตอนของหน้าที่กำลังเปิดได้ทุกเมื่อ" },
+  ],
+  "ka-maimee": kaCaseGuideSteps,
+  "ka-wa-ve": kaCaseGuideSteps,
+  "ka-submit": [
+    { target: "submit-case", title: "ตรวจว่ากำลังส่งคดีไหน", body: "เลือก MAIMEE หรือ WA VE ที่คุณสำรวจมา แล้วระบบจะเปิดแบบฟอร์มและเกณฑ์ของคดีนั้น" },
+    { target: "submit-answer", title: "เขียนคำอธิบายในระบบ", body: "สรุปแบบจำลองเชิงสาเหตุ ไทม์ไลน์ หลักฐานทางเลือก และการแยกสิ่งที่ยืนยันได้ อนุมานได้ หรือยังไม่รู้" },
+    { target: "submit-answer-attachment", title: "หรือแนบผลงานหนึ่งชิ้น", body: "หากใช้ไฟล์ ให้ส่งได้หนึ่งไฟล์ตามชนิดที่ระบบอนุญาต แทนข้อความในระบบได้" },
+    { target: "submit-final", title: "ตรวจแล้วจึงส่ง", body: "คดีนี้ไม่บังคับ AI-chat PDF หรือ post-test; ระบบจะตรวจว่ามีข้อความหรือไฟล์คำตอบก่อนบันทึกการส่ง" },
+  ],
   "evidence-viewer": [
     { target: "evidence-viewer", title: "นี่คือไฟล์ที่กำลังตรวจ", body: "อ่านหรือดูไฟล์ให้จบก่อนกลับไปเชื่อมกับหลักฐานชิ้นอื่น" },
     { target: "evidence-context", title: "ดูบริบทของไฟล์", body: "แถบนี้บอกชนิดของไฟล์และช่วงเหตุการณ์ที่ไฟล์ชิ้นนี้อยู่" },
@@ -57,30 +88,37 @@ const guideSteps: Record<string, GuideStep[]> = {
 };
 
 function stepsFor(guideKey: string): GuideStep[] {
+  if (guideKey === "timeline") {
+    const timeline = guideSteps.timeline;
+    return [timeline[0], timeline[1], timeline[4], timeline[2]];
+  }
   return guideSteps[guideKey] ?? guideSteps.default;
 }
 
 function isTypingTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
-  return target.matches("input, textarea, select, button, [contenteditable='true']");
+  return target.matches("input, textarea, select, [contenteditable='true']");
 }
 
 function targetElement(target: string) {
+  if (target === "timeline") return document.querySelector<HTMLElement>("[data-guide='node-zone-timeline']");
+  if (target === "timeline-subgame") return document.querySelector<HTMLElement>("[data-guide='node-zone-timeline'] button");
   return document.querySelector<HTMLElement>(`[data-guide="${target}"]`);
 }
 
 export function HelpButton({ compact = false, guideKey = "default", pageTitle }: HelpButtonProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [startAt, setStartAt] = useState<number | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const steps = useMemo(() => stepsFor(guideKey), [guideKey]);
 
   return <>
-    <button aria-label="เปิดคำแนะนำจากเจ้าเงาะ" className={`player-utility-link${compact ? " player-utility-link--compact" : ""}`} onClick={() => setDrawerOpen(true)} title="คำแนะนำ" type="button">
+    <button aria-label="เปิดคำแนะนำจากเจ้าเงาะ" className={`player-utility-link${compact ? " player-utility-link--compact" : ""}`} data-guide="help-control" onClick={() => guideKey === "settings" ? setStartAt(0) : setDrawerOpen(true)} ref={triggerRef} title="คำแนะนำ" type="button">
       <CircleHelp aria-hidden="true" size={compact ? 17 : 16} />
       {compact ? <span className="sr-only">ช่วยเหลือ</span> : "ช่วยเหลือ"}
     </button>
-    {drawerOpen ? <HelpDrawer guideKey={guideKey} pageTitle={pageTitle} steps={steps} onClose={() => setDrawerOpen(false)} onStart={(index) => { setDrawerOpen(false); setStartAt(index); }} /> : null}
-    {startAt !== null ? <GuideTour guideKey={guideKey} initialStep={startAt} pageTitle={pageTitle} steps={steps} onClose={() => setStartAt(null)} /> : null}
+    {drawerOpen ? <HelpDrawer guideKey={guideKey} pageTitle={pageTitle} steps={steps} onClose={() => { setDrawerOpen(false); window.requestAnimationFrame(() => triggerRef.current?.focus()); }} onStart={(index) => { setDrawerOpen(false); setStartAt(index); }} /> : null}
+    {startAt !== null ? <GuideTour guideKey={guideKey} initialStep={startAt} pageTitle={pageTitle} steps={steps} onClose={() => { setStartAt(null); window.requestAnimationFrame(() => triggerRef.current?.focus()); }} /> : null}
   </>;
 }
 
@@ -95,13 +133,13 @@ function HelpDrawer({ guideKey, onClose, onStart, pageTitle, steps }: { guideKey
     <div className="player-help-drawer-backdrop" role="presentation">
       <aside aria-label="คำแนะนำจากเจ้าเงาะ" aria-modal="true" className="player-help-drawer" role="dialog">
         <header className="player-guide-heading">
-          <div><span className="player-eyebrow">HELP / {guideKey.toUpperCase()}</span><h2>เจ้าเงาะช่วยอะไรได้บ้าง?</h2><p>{pageTitle}</p></div>
+          <div><span className="player-eyebrow">HELP / {guideKey.toUpperCase()}</span><h2>เจ้าเงาะช่วยอะไรได้บ้าง?</h2><p>ตอนนี้คุณอยู่ที่ {pageTitle}</p></div>
           <button aria-label="ปิดคำแนะนำ" className="player-close-button" onClick={onClose} type="button"><X aria-hidden="true" size={19} /></button>
         </header>
         <nav aria-label="หัวข้อคำแนะนำ" className="player-help-topics">
           {steps.map((step, index) => <button key={step.target} onClick={() => onStart(index)} type="button"><span>{String(index + 1).padStart(2, "0")}</span>{step.title}</button>)}
         </nav>
-        <footer><p>เลือกหัวข้อเพื่อให้เจ้าเงาะพาไปดูบนหน้าจอจริง</p><button className="player-button" onClick={onClose} type="button">ปิด</button></footer>
+        <footer><p>เลือกหัวข้อเพื่อให้เจ้าเงาะพาไปดูบนหน้าจอจริง</p><button className="player-button player-button--primary" onClick={() => onStart(0)} type="button">เริ่มคำแนะนำหน้านี้</button></footer>
       </aside>
     </div>,
     document.body,
@@ -112,9 +150,24 @@ export function GuideTour({ guideKey, initialStep = 0, onClose, pageTitle, steps
   const allSteps = steps ?? stepsFor(guideKey);
   const [stepIndex, setStepIndex] = useState(Math.min(initialStep, allSteps.length - 1));
   const [rect, setRect] = useState<DOMRect | null>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
   const step = allSteps[stepIndex];
 
   useEffect(() => setStepIndex(Math.min(initialStep, allSteps.length - 1)), [allSteps.length, initialStep]);
+  useEffect(() => {
+    const target = targetElement(step.target);
+    const action = target?.matches(".investigative-action") ? target : target?.querySelector<HTMLElement>(".investigative-action");
+    if (!action || document.documentElement.dataset.motion === "off" || document.documentElement.dataset.motion === "reduce") return;
+    action.classList.remove("is-guided");
+    void action.offsetWidth;
+    action.classList.add("is-guided");
+    const timeout = window.setTimeout(() => action.classList.remove("is-guided"), 1300);
+    return () => { window.clearTimeout(timeout); action.classList.remove("is-guided"); };
+  }, [step.target]);
+  useEffect(() => {
+    returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    return () => { window.requestAnimationFrame(() => returnFocusRef.current?.focus()); };
+  }, []);
 
   useEffect(() => {
     let frame = 0;
@@ -147,6 +200,7 @@ export function GuideTour({ guideKey, initialStep = 0, onClose, pageTitle, steps
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") { event.preventDefault(); onClose(); return; }
+      if (event.key === "ArrowLeft" && !isTypingTarget(event.target) && stepIndex > 0) { event.preventDefault(); setStepIndex((value) => value - 1); return; }
       if (event.key === "Enter" && !isTypingTarget(event.target)) {
         event.preventDefault();
         if (stepIndex === allSteps.length - 1) onClose();
@@ -163,14 +217,27 @@ export function GuideTour({ guideKey, initialStep = 0, onClose, pageTitle, steps
     top: `${Math.max(rect.top - 8, 6)}px`,
     width: `${Math.min(rect.width + 16, window.innerWidth - Math.max(rect.left - 8, 6) - 6)}px`,
   } : undefined;
+  const bubbleStyle = rect ? (() => {
+    const bubbleWidth = Math.min(368, window.innerWidth - 24);
+    const rightPosition = rect.right + 18;
+    const leftPosition = rect.left - bubbleWidth - 18;
+    const left = rightPosition + bubbleWidth <= window.innerWidth - 12
+      ? rightPosition
+      : Math.max(12, leftPosition);
+    return {
+      left: `${left}px`,
+      top: `${Math.max(12, Math.min(rect.top, window.innerHeight - 340))}px`,
+    };
+  })() : undefined;
 
   return createPortal(
     <div className="player-tour-layer" role="presentation">
       <div className="player-tour-dimmer" />
       {rect ? <div aria-hidden="true" className="player-tour-spotlight" style={boxStyle} /> : null}
-      <aside aria-label={`คำแนะนำ: ${step.title}`} aria-modal="true" className="player-tour-bubble" role="dialog">
+      <aside aria-label={`คำแนะนำ: ${step.title}`} aria-modal="true" className="player-tour-bubble" role="dialog" style={bubbleStyle}>
         <header><span className="player-eyebrow">GUIDE / {String(stepIndex + 1).padStart(2, "0")} OF {String(allSteps.length).padStart(2, "0")}</span><button aria-label="ปิดคำแนะนำ" className="player-close-button" onClick={onClose} type="button"><X aria-hidden="true" size={18} /></button></header>
         <div className="player-tour-copy"><h2>{step.title}</h2><p>{step.body}</p><small>{pageTitle}</small></div>
+        <img alt="" aria-hidden="true" className="player-tour-cat" src="/jao-ngoh-cat.png" />
         <footer>
           <button className="player-text-action" onClick={onClose} type="button"><SkipForward aria-hidden="true" size={15} /> ข้ามคำแนะนำ</button>
           <div>
@@ -189,9 +256,9 @@ export function AutoGuide({ guideKey = "default", pageTitle }: { guideKey?: stri
   useEffect(() => {
     try {
       if (window.localStorage.getItem("jao-ngoh-auto-guide") === "false") return;
-      const seenKey = `jao-ngoh-guide-seen:${guideKey}`;
-      if (window.sessionStorage.getItem(seenKey)) return;
-      window.sessionStorage.setItem(seenKey, "true");
+      const seenKey = `jao-ngoh-guide-state:${guideKey}:v2`;
+      if (window.localStorage.getItem(seenKey)) return;
+      window.localStorage.setItem(seenKey, "dismissed");
       const timeout = window.setTimeout(() => setOpen(true), 550);
       return () => window.clearTimeout(timeout);
     } catch { return undefined; }

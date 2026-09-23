@@ -1,5 +1,7 @@
 import { env } from "cloudflare:workers";
 
+import { getSubmissionRequirements } from "./submissions/requirements";
+
 const autoPassConfigKey = "completion_auto_pass_submissions";
 
 export type CompletionState = {
@@ -9,7 +11,13 @@ export type CompletionState = {
   requiredSubgameIds: string[];
 };
 
-type RequiredSubgame = { id: string; title: string };
+type PlayableSubgame = { id: string; required_for_completion: number; title: string };
+type SubmittedSubgame = {
+  answer_attachment_uploaded: number;
+  answer_completed_at: string | null;
+  posttest_completed_at: string | null;
+  subgame_id: string;
+};
 
 async function insertAchievement(userId: string, key: string, scope: string, subgameId?: string) {
   await env.DB.prepare(
@@ -34,33 +42,53 @@ async function insertAdminNotification(userId: string, key: string, type: string
 }
 
 export async function recalculateCompletionForUser(userId: string): Promise<CompletionState> {
-  const [config, required, user] = await Promise.all([
+  const [config, playable, user] = await Promise.all([
     env.DB.prepare("SELECT value FROM app_metadata WHERE key = ?").bind(autoPassConfigKey).first<{ value: string }>(),
     env.DB.prepare(
-      `SELECT subgames.id, subgames.title
+      `SELECT subgames.id, subgames.required_for_completion, subgames.title
          FROM subgames INNER JOIN games ON games.id = subgames.game_id
-        WHERE games.status = 'playable' AND subgames.status = 'playable' AND subgames.required_for_completion = 1`,
-    ).all<RequiredSubgame>(),
+        WHERE games.status = 'playable' AND subgames.status = 'playable'`,
+    ).all<PlayableSubgame>(),
     env.DB.prepare(
       `SELECT emailVerified AS email_verified FROM "user" WHERE id = ?`,
     ).bind(userId).first<{ email_verified: number }>(),
   ]);
   const autoPass = config?.value === "true";
-  const requiredSubgames = required.results;
-  const qualifying = await env.DB.prepare(
-    `SELECT submissions.subgame_id
+  const playableSubgames = playable.results;
+  const requiredSubgames = playableSubgames.filter((subgame) => subgame.required_for_completion === 1);
+  const submitted = await env.DB.prepare(
+    `SELECT submissions.subgame_id,
+            answer_session.completed_at AS answer_completed_at,
+            posttest_session.completed_at AS posttest_completed_at,
+            EXISTS(
+              SELECT 1 FROM uploads
+               WHERE uploads.submission_id = submissions.id
+                 AND uploads.user_id = submissions.user_id
+                 AND uploads.kind = 'answer_attachment'
+                 AND uploads.status IN ('uploaded', 'accepted')
+            ) AS answer_attachment_uploaded
        FROM submissions
-       INNER JOIN questionnaire_sessions AS answer_session ON answer_session.id = submissions.questionnaire_session_id
-       INNER JOIN questionnaire_sessions AS posttest_session ON posttest_session.id = submissions.posttest_session_id
+       LEFT JOIN questionnaire_sessions AS answer_session ON answer_session.id = submissions.questionnaire_session_id
+       LEFT JOIN questionnaire_sessions AS posttest_session ON posttest_session.id = submissions.posttest_session_id
+       INNER JOIN subgames ON subgames.id = submissions.subgame_id
+       INNER JOIN games ON games.id = subgames.game_id
       WHERE submissions.user_id = ?
+        AND games.status = 'playable'
+        AND subgames.status = 'playable'
         AND submissions.status IN ('submitted', 'accepted')
-        AND answer_session.completed_at IS NOT NULL
-        AND posttest_session.completed_at IS NOT NULL
         AND (submissions.status = 'accepted' OR ? = 1)`,
-  ).bind(userId, Number(autoPass)).all<{ subgame_id: string }>();
-  const qualifyingIds = new Set(qualifying.results.map((row) => row.subgame_id));
-
-  for (const subgame of requiredSubgames) {
+  ).bind(userId, Number(autoPass)).all<SubmittedSubgame>();
+  const qualifyingIds = new Set((await Promise.all(submitted.results.map(async (submission) => {
+    const requirements = await getSubmissionRequirements(env.DB, submission.subgame_id);
+    if (
+      requirements.requiresAnswerTextOrAttachment &&
+      !submission.answer_completed_at &&
+      !submission.answer_attachment_uploaded
+    ) return null;
+    if (requirements.requiresPosttest && !submission.posttest_completed_at) return null;
+    return submission.subgame_id;
+  }))).filter((subgameId): subgameId is string => subgameId !== null));
+  for (const subgame of playableSubgames) {
     if (!qualifyingIds.has(subgame.id)) continue;
     await env.DB.prepare(
       `INSERT INTO subgame_progress (user_id, subgame_id, status, started_at, last_activity_at, completed_at)
@@ -122,7 +150,7 @@ export async function recalculateCompletionForUser(userId: string): Promise<Comp
 
   return {
     allRequiredSubgamesCompleted,
-    completedSubgameIds: requiredSubgames.filter((subgame) => qualifyingIds.has(subgame.id)).map((subgame) => subgame.id),
+    completedSubgameIds: playableSubgames.filter((subgame) => qualifyingIds.has(subgame.id)).map((subgame) => subgame.id),
     letterEligible,
     requiredSubgameIds: requiredSubgames.map((subgame) => subgame.id),
   };

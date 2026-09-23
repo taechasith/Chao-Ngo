@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { kaRouteForSubgameId } from "../../lib/ka-casefiles";
 import { Panel, StatusBadge } from "./panel";
 import { GameRulesBrief } from "./game-rules-brief";
+import { InvestigativeAction } from "./investigative-action";
 
 type AnswerValue = null | number | string | string[];
 type SaveState = "idle" | "saving" | "saved" | "error";
@@ -121,6 +123,14 @@ function responseMessage(status: number): string {
 }
 
 function subgameName(subgameId: string): string {
+  if (subgameId === "subgame-ka-fintech") {
+    return "คดี MAIMEE · FinTech";
+  }
+
+  if (subgameId === "subgame-ka-wa-ve" || subgameId === "subgame-ka-psychology" || subgameId === "subgame-ka-biotech") {
+    return "คดี WA VE · Bio x Psychology";
+  }
+
   if (subgameId === "subgame-node-zone-quantum") {
     return "Quantum: The Correct Trajectory";
   }
@@ -424,14 +434,14 @@ export function OnboardingFlow() {
             <span>{notice.researchConsentCheckboxLabel}</span>
             </label>
             <FlowMessage message={message} saveState={saveState} />
-            <button
-            className="player-button player-button--primary w-full"
+            <InvestigativeAction
+            className="w-full"
             disabled={!noticeResponse.collectionEnabled || !researchParticipation || saveState === "saving"}
             onClick={() => void startQuestionnaire()}
             type="button"
           >
               ยินยอมและไปต่อ
-          </button>
+          </InvestigativeAction>
             <Link className="player-text-action" href="/play">กลับไปที่แฟ้มคดี</Link>
           </aside>
         </div>
@@ -639,6 +649,11 @@ function QuestionField({
 }
 
 function RecommendationResult({ recommendation }: { recommendation: Recommendation }) {
+  const kaRoute = kaRouteForSubgameId(recommendation.subgameId);
+  if (kaRoute) {
+    return <KaRecommendationResult recommendation={recommendation} route={kaRoute} />;
+  }
+
   const interestPercent = Math.round(recommendation.components.interest * 100);
   const problemStylePercent = Math.round(recommendation.components.problemStyle * 100);
   const confidenceGapPercent = Math.round(recommendation.components.confidenceGap * 100);
@@ -661,8 +676,37 @@ function RecommendationResult({ recommendation }: { recommendation: Recommendati
           <li>พื้นที่ให้สำรวจจากความคุ้นเคยที่ประเมินตนเอง: {confidenceGapPercent}%</li>
         </ul>
         <div className="mt-6 flex flex-wrap gap-3">
-          <Link className="player-button player-button--primary" href={recommendation.subgameId === "subgame-node-zone-space" ? "/play/node-zone/space" : "/play/node-zone/quantum"}>เปิดแฟ้มที่แนะนำ</Link>
+          <InvestigativeAction href={recommendation.subgameId === "subgame-node-zone-space" ? "/play/node-zone/space" : "/play/node-zone/quantum"}>เริ่มคดีที่แนะนำ</InvestigativeAction>
           <Link className="player-button" href="/play/node-zone">เลือกคดีอื่น</Link>
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function KaRecommendationResult({ recommendation, route }: { recommendation: Recommendation; route: string }) {
+  const interestPercent = Math.round(recommendation.components.interest * 100);
+  const problemStylePercent = Math.round(recommendation.components.problemStyle * 100);
+  const confidenceGapPercent = Math.round(recommendation.components.confidenceGap * 100);
+
+  return (
+    <div className="player-onboarding">
+      <GameRulesBrief />
+      <div className="player-page-heading" data-player-reveal="heading">
+        <StatusBadge>ข้อเสนอแนะ</StatusBadge>
+        <h1>ลองเริ่มที่ {subgameName(recommendation.subgameId)}</h1>
+        <p className="max-w-prose text-base leading-7 text-white/75">คำแนะนำนี้สะท้อนคำตอบที่คุณให้ไว้ ไม่ใช่การวัดความสามารถ และคุณยังเลือกคดีอื่นได้เสมอ</p>
+      </div>
+      <Panel data-player-reveal="primary">
+        <h2 className="font-display text-2xl text-white">เหตุผลที่แนะนำเส้นทางนี้</h2>
+        <ul className="mt-4 space-y-3 text-sm leading-6 text-white/75">
+          <li>ความสนใจในหัวข้อที่เกี่ยวข้อง: {interestPercent}%</li>
+          <li>ความสอดคล้องกับรูปแบบปัญหาที่เลือก: {problemStylePercent}%</li>
+          <li>พื้นที่ให้สำรวจจากความคุ้นเคยที่ประเมินตนเอง: {confidenceGapPercent}%</li>
+        </ul>
+        <div className="mt-6 flex flex-wrap gap-3">
+          <InvestigativeAction href={route}>เริ่มคดีที่แนะนำ</InvestigativeAction>
+          <Link className="player-button" href="/play/ka-casefiles">เลือกคดี NetLood City</Link>
         </div>
       </Panel>
     </div>

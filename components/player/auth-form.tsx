@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
+import { InvestigativeAction } from "./investigative-action";
+import { TurnstileWidget } from "./turnstile-widget";
 
 type AuthFormProps = {
   mode: "login" | "signup";
@@ -16,6 +17,14 @@ type FormStatus =
   | { kind: "success"; message: string };
 
 function messageForFailure(status: number): string {
+  if (status === 403) {
+    return "โปรดยืนยันการตรวจสอบความปลอดภัยแล้วลองอีกครั้ง";
+  }
+
+  if (status === 503) {
+    return "การตรวจสอบความปลอดภัยไม่พร้อมใช้งานในขณะนี้";
+  }
+
   if (status === 429) {
     return "ลองใหม่อีกครั้งในภายหลัง";
   }
@@ -28,6 +37,8 @@ export function AuthForm({ mode, redirectTo }: AuthFormProps) {
   const [status, setStatus] = useState<FormStatus>({ kind: "idle" });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [turnstileResetKey, setTurnstileResetKey] = useState(0);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
 
   const isSignup = mode === "signup";
 
@@ -41,9 +52,17 @@ export function AuthForm({ mode, redirectTo }: AuthFormProps) {
     setIsSubmitting(true);
     setStatus({ kind: "idle" });
 
+    const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
+
+    if (turnstileSiteKey && !turnstileToken) {
+      setStatus({ kind: "error", message: "โปรดยืนยันการตรวจสอบความปลอดภัยแล้วลองอีกครั้ง" });
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
       const response = await fetch(isSignup ? "/api/auth/sign-up/email" : "/api/auth/sign-in/email", {
-        body: JSON.stringify(isSignup ? { email, name, password } : { email, password }),
+        body: JSON.stringify(isSignup ? { email, name, password, turnstileToken } : { email, password, turnstileToken }),
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -51,17 +70,19 @@ export function AuthForm({ mode, redirectTo }: AuthFormProps) {
 
       if (!response.ok) {
         setStatus({ kind: "error", message: messageForFailure(response.status) });
+        setTurnstileToken(null);
+        setTurnstileResetKey((value) => value + 1);
         return;
       }
 
       setStatus({
         kind: "success",
         message: isSignup
-          ? "สร้างบัญชีแล้ว คุณเข้าสู่ระบบเพื่ออ่านข้อมูลก่อนเริ่มเล่นได้"
+          ? "สร้างบัญชีสำเร็จ กำลังเข้าสู่แบบสอบถามก่อนเริ่มเล่น"
           : "เข้าสู่ระบบสำเร็จ",
       });
 
-      if (!isSignup) router.replace(redirectTo ?? "/onboarding");
+      router.replace(redirectTo ?? "/onboarding");
     } catch {
       setStatus({ kind: "error", message: "ไม่สามารถเชื่อมต่อกับระบบได้" });
     } finally {
@@ -109,19 +130,23 @@ export function AuthForm({ mode, redirectTo }: AuthFormProps) {
         </span>
         {isSignup ? <span className="text-xs text-white/55">อย่างน้อย 12 ตัวอักษร</span> : null}
       </label>
+      <TurnstileWidget
+        action={isSignup ? "signup" : "login"}
+        key={turnstileResetKey}
+        onTokenChange={setTurnstileToken}
+        siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim()}
+      />
       {status.kind === "idle" ? null : (
         <p aria-live="polite" className={status.kind === "error" ? "text-sm text-red-200" : "text-sm text-cyan-100"}>
           {status.message}
         </p>
       )}
-      <button
-        className="player-button player-button--primary"
+      <InvestigativeAction
         disabled={isSubmitting}
         type="submit"
       >
         {isSubmitting ? "กำลังดำเนินการ" : isSignup ? "สร้างบัญชี" : "เข้าสู่ระบบ"}
-      </button>
-      {isSignup && status.kind === "success" ? <Link className="player-button ml-3" href="/login">เข้าสู่ระบบ</Link> : null}
+      </InvestigativeAction>
     </form>
   );
 }

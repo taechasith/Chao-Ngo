@@ -7,6 +7,10 @@ const PUBLIC_ASSET_PREFIXES = [
   "games/node-zone/quantum/",
   "games/node-zone/space/",
   "games/node-zone/post-case/",
+  "games/ka-casefiles/netlood-city/",
+  "games/ka-casefiles/personnel/",
+  "games/ka-casefiles/maimee/",
+  "games/ka-casefiles/wa-ve/",
 ] as const;
 
 export function assertPublicAssetKey(value: string): string {

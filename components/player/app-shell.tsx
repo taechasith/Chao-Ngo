@@ -5,16 +5,18 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { gsap } from "gsap";
-import { Compass, FolderOpen, House, Menu, NotebookPen, Play, Send, UserRound, X } from "lucide-react";
+import { FolderOpen, House, LogOut, Menu, NotebookPen, Play, Send, Settings, UserRound, X } from "lucide-react";
 
 import { AccountGate, type AccountStatus } from "./account-gate";
 import { AchievementToast } from "./achievement-toast";
 import { AutoGuide, HelpButton } from "./help-button";
 import { ContextBreadcrumb } from "./context-breadcrumb";
+import { UiSound } from "./ui-sound";
 
 type AppShellProps = {
   children: ReactNode;
   fullBleed?: boolean;
+  guideKey?: string;
   pageTitle: string;
 };
 
@@ -27,18 +29,23 @@ const primaryLinks = [
 
 const utilityLinks = [
   { href: "/profile", label: "โปรไฟล์", icon: UserRound },
+  { href: "/settings", label: "ตั้งค่า", icon: Settings },
   { href: "/submit", label: "ส่งคำตอบ", icon: Send },
 ];
 
 function stateForPath(pathname: string) {
   if (pathname === "/play") return "กำลังเลือกแฟ้ม";
-  if (pathname === "/play/node-zone") return "เลือกจุดเริ่มต้น";
-  if (pathname.includes("/quantum")) return "คดีควอนตัมเปิดอยู่";
-  if (pathname.includes("/space")) return "คดีอวกาศเปิดอยู่";
-  if (pathname.includes("ka-casefiles")) return "แฟ้มคดียังไม่เปิด";
+  if (pathname === "/play/node-zone") return "NODE ZONE";
+  if (pathname.includes("/quantum")) return "THE CORRECT TRAJECTORY";
+  if (pathname.includes("/space")) return "THIRTEEN DAYS IN UTOPIA";
+  if (pathname.includes("ka-casefiles/maimee") || pathname.includes("ka-casefiles/fintech")) return "NETLOOD CITY / คดี MAIMEE";
+  if (pathname.includes("ka-casefiles/wa-ve") || pathname.includes("ka-casefiles/psychology") || pathname.includes("ka-casefiles/biotech")) return "NETLOOD CITY / คดี WA VE";
+  if (pathname === "/play/ka-casefiles") return "NETLOOD CITY / เลือกคดี";
+  if (pathname.includes("ka-casefiles")) return "THE K.A. CASEFILES";
   if (pathname === "/onboarding") return "กำลังเตรียมก่อนเปิดแฟ้ม";
   if (pathname === "/submit") return "รอการตัดสินใจ";
-  if (pathname === "/profile") return "กำลังทบทวนความคืบหน้า";
+  if (pathname === "/profile") return "CASE ARCHIVE";
+  if (pathname === "/settings") return "SYSTEM CONTROL";
   if (pathname === "/login" || pathname === "/signup") return "กำลังกลับเข้าสู่ระบบ";
   return "แฟ้มคดีพร้อม";
 }
@@ -49,6 +56,8 @@ function contextForPath(pathname: string) {
   if (pathname === "/play/node-zone") return { parent: "แฟ้มคดี", current: "NODE ZONE", href: "/play" };
   if (pathname.includes("/quantum")) return { parent: "NODE ZONE", current: "THE CORRECT TRAJECTORY", href: "/play/node-zone" };
   if (pathname.includes("/space")) return { parent: "NODE ZONE", current: "THIRTEEN DAYS IN UTOPIA", href: "/play/node-zone" };
+  if (pathname.includes("ka-casefiles/maimee") || pathname.includes("ka-casefiles/fintech")) return { parent: "THE K.A. CASEFILES", current: "คดี MAIMEE", href: "/play/ka-casefiles" };
+  if (pathname.includes("ka-casefiles/wa-ve") || pathname.includes("ka-casefiles/psychology") || pathname.includes("ka-casefiles/biotech")) return { parent: "THE K.A. CASEFILES", current: "คดี WA VE", href: "/play/ka-casefiles" };
   if (pathname.includes("ka-casefiles")) return { parent: "แฟ้มคดี", current: "THE K.A. CASEFILES", href: "/play" };
   if (pathname === "/onboarding") return { parent: "งานวิจัย", current: "ก่อนเริ่มแฟ้มคดี", href: "/onboarding" };
   if (pathname === "/submit") return { parent: "แฟ้มคดี", current: "ส่งคำตอบ", href: "/play" };
@@ -61,23 +70,29 @@ function guideKeyForPath(pathname: string) {
   if (pathname === "/play/node-zone") return "timeline";
   if (pathname.includes("/quantum")) return "quantum";
   if (pathname.includes("/space")) return "space";
+  if (pathname === "/play/ka-casefiles") return "ka-casefiles";
+  if (pathname.includes("ka-casefiles/maimee") || pathname.includes("ka-casefiles/fintech")) return "ka-maimee";
+  if (pathname.includes("ka-casefiles/wa-ve") || pathname.includes("ka-casefiles/psychology") || pathname.includes("ka-casefiles/biotech")) return "ka-wa-ve";
   if (pathname === "/onboarding") return "onboarding";
   if (pathname === "/submit") return "submit";
   return "default";
 }
 
-export function AppShell({ children, fullBleed = false, pageTitle }: AppShellProps) {
+export function AppShell({ children, fullBleed = false, guideKey: providedGuideKey, pageTitle }: AppShellProps) {
   const pathname = usePathname();
   const topbarRef = useRef<HTMLElement>(null);
+  const navFrameRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [utilityOpen, setUtilityOpen] = useState(false);
   const [accountStatus, setAccountStatus] = useState<AccountStatus>("checking");
+  const [showSaveStatus, setShowSaveStatus] = useState(true);
   const state = stateForPath(pathname);
   const context = contextForPath(pathname);
-  const guideKey = guideKeyForPath(pathname);
-  const requiresAccount = pathname.startsWith("/play");
+  const guideKey = providedGuideKey ?? guideKeyForPath(pathname);
+  const requiresAccount = pathname.startsWith("/play") || pathname === "/submit" || pathname === "/profile";
+  const showGameplayTools = requiresAccount && accountStatus === "signed-in";
 
   useLayoutEffect(() => {
     const content = contentRef.current;
@@ -126,6 +141,37 @@ export function AppShell({ children, fullBleed = false, pageTitle }: AppShellPro
     return () => context.revert();
   }, [pathname]);
 
+  useEffect(() => {
+    try { setShowSaveStatus(window.localStorage.getItem("jao-ngoh-show-save-status") !== "false"); } catch { /* Keep the visible default. */ }
+  }, []);
+
+  useEffect(() => {
+    const frame = navFrameRef.current;
+    if (!frame || window.matchMedia("(prefers-reduced-motion: reduce)").matches || ["reduce", "off"].includes(document.documentElement.dataset.motion ?? "")) return;
+    let animationFrame = 0;
+    const updateLight = (event: PointerEvent) => {
+      const bounds = frame.getBoundingClientRect();
+      const x = event.clientX - bounds.left;
+      const y = event.clientY - bounds.top;
+      cancelAnimationFrame(animationFrame);
+      animationFrame = requestAnimationFrame(() => {
+        frame.style.setProperty("--mx", `${x.toFixed(1)}px`);
+        frame.style.setProperty("--my", `${y.toFixed(1)}px`);
+      });
+    };
+    const enter = () => frame.style.setProperty("--lit", "1");
+    const leave = () => frame.style.setProperty("--lit", "0");
+    frame.addEventListener("pointermove", updateLight, { passive: true });
+    frame.addEventListener("pointerenter", enter);
+    frame.addEventListener("pointerleave", leave);
+    return () => {
+      cancelAnimationFrame(animationFrame);
+      frame.removeEventListener("pointermove", updateLight);
+      frame.removeEventListener("pointerenter", enter);
+      frame.removeEventListener("pointerleave", leave);
+    };
+  }, []);
+
   useEffect(() => setUtilityOpen(false), [pathname]);
 
   useEffect(() => {
@@ -135,17 +181,19 @@ export function AppShell({ children, fullBleed = false, pageTitle }: AppShellPro
     }
 
     const controller = new AbortController();
-    void fetch("/api/auth/get-session", { credentials: "same-origin", signal: controller.signal })
+    void fetch("/api/player-session", { credentials: "same-origin", signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) {
-          setAccountStatus("signed-out");
+          setAccountStatus("unavailable");
           return;
         }
-        const payload = await response.json() as { user?: { id?: string } | null };
-        setAccountStatus(payload.user?.id ? "signed-in" : "signed-out");
+        const payload = await response.json() as { state?: AccountStatus };
+        setAccountStatus(payload.state === "signed-in" || payload.state === "signed-out" || payload.state === "unavailable"
+          ? payload.state
+          : "unavailable");
       })
       .catch(() => {
-        if (!controller.signal.aborted) setAccountStatus("signed-out");
+        if (!controller.signal.aborted) setAccountStatus("unavailable");
       });
 
     return () => controller.abort();
@@ -182,65 +230,54 @@ export function AppShell({ children, fullBleed = false, pageTitle }: AppShellPro
     <div className="player-shell min-h-screen text-white">
       <a className="player-skip-link" href="#player-main">ข้ามไปยังเนื้อหา</a>
       <header className="player-topbar" ref={topbarRef}>
-        <div className="player-nav-frame">
-            <Link aria-label="กลับสู่ภาพรวมเจ้าเงาะ" className="player-brand" href="/">
-            เจ้าเงาะ<img alt="" aria-hidden="true" className="player-brand-mark" src="/rambutan.svg" />
+        <div className="player-nav-frame" ref={navFrameRef}>
+          <i aria-hidden="true" className="player-nav-extrusion" />
+          <i aria-hidden="true" className="player-nav-frame-lines" />
+          <i aria-hidden="true" className="player-nav-glint" />
+          <i aria-hidden="true" className="player-nav-corner player-nav-corner--tl" />
+          <i aria-hidden="true" className="player-nav-corner player-nav-corner--tr" />
+          <i aria-hidden="true" className="player-nav-corner player-nav-corner--bl" />
+          <i aria-hidden="true" className="player-nav-corner player-nav-corner--br" />
+          <Link aria-label="กลับสู่ภาพรวมเจ้าเงาะ" className="player-brand" href="/">
+            <span className="player-brand-wordmark">เจ้าเงาะ</span><span aria-hidden="true" className="player-brand-dot" />
           </Link>
           <nav aria-label="เมนูหลัก" className="player-primary-nav">
             {primaryLinks.map((link) => {
               const Icon = link.icon;
-              return (
-                <Link
-                  aria-current={link.match(pathname) ? "page" : undefined}
-                  aria-label={link.label}
-                  className="player-nav-link"
-                  href={link.href}
-                  key={link.label}
-                  title={link.label}
-                >
-                  <span aria-hidden="true" className="player-nav-icon"><Icon size={15} /></span>
-                  <span className="player-nav-label">{link.label}</span>
-                </Link>
-              );
+              return <Link aria-current={link.match(pathname) ? "page" : undefined} aria-label={link.label} className="player-nav-link" href={link.href} key={link.label} title={link.label}>
+                <span aria-hidden="true" className="player-nav-icon"><Icon size={15} /></span>
+                <span className="player-nav-label">{link.label}</span>
+              </Link>;
             })}
           </nav>
           <div className="player-nav-actions">
             <p aria-live="polite" className="player-terminal">
               <span aria-hidden="true" className="player-terminal-led" />
               <span className="player-terminal-prefix">mind@chao-ngo ~ $</span>
-              <span>{state}</span>
+              <span className="player-terminal-state">{showSaveStatus ? state : ""}</span>
             </p>
-            <button
-              aria-expanded={utilityOpen}
-              aria-controls="player-utilities"
-              aria-label="เปิดเมนูเครื่องมือ"
-              title="เมนูและเครื่องมือ"
-              className="player-utility-trigger"
-              ref={triggerRef}
-              onClick={() => setUtilityOpen((open) => !open)}
-              type="button"
-            >
+            <button aria-expanded={utilityOpen} aria-controls="player-utilities" aria-label="เปิดเมนูเครื่องมือ" title="เมนูและเครื่องมือ" className="player-utility-trigger" ref={triggerRef} onClick={() => setUtilityOpen((open) => !open)} type="button">
               {utilityOpen ? <X aria-hidden="true" size={19} /> : <Menu aria-hidden="true" size={19} />}
             </button>
           </div>
-          {utilityOpen ? (
-            <div className="player-utility-menu" id="player-utilities" ref={menuRef}>
-              <nav aria-label="เมนูหลักบนโทรศัพท์" className="player-menu-primary">
-                {primaryLinks.map((link) => <Link aria-current={link.match(pathname) ? "page" : undefined} href={link.href} key={link.label}>{link.label}</Link>)}
-              </nav>
-              <p className="player-eyebrow">เครื่องมือ</p>
-              {utilityLinks.map((link) => {
-                const Icon = link.icon;
-                return (
-                  <Link aria-current={pathname === link.href ? "page" : undefined} href={link.href} key={link.href} title={link.label}>
-                    <span aria-hidden="true" className="player-utility-icon"><Icon size={15} /></span>
-                    <span>{link.label}</span>
-                  </Link>
-                );
-              })}
-              <HelpButton guideKey={guideKey} pageTitle={pageTitle} />
-            </div>
-          ) : null}
+          {utilityOpen ? <div className="player-utility-menu" id="player-utilities" ref={menuRef}>
+            <nav aria-label="เมนูหลักบนโทรศัพท์" className="player-menu-primary">
+              {primaryLinks.map((link) => <Link aria-current={link.match(pathname) ? "page" : undefined} href={link.href} key={link.label}>{link.label}</Link>)}
+            </nav>
+            <p className="player-eyebrow">เครื่องมือ</p>
+            {utilityLinks.map((link) => {
+              const Icon = link.icon;
+              return <Link aria-current={pathname === link.href ? "page" : undefined} href={link.href} key={link.href} title={link.label}>
+                <span aria-hidden="true" className="player-utility-icon"><Icon size={15} /></span>
+                <span>{link.label}</span>
+              </Link>;
+            })}
+            <HelpButton guideKey={guideKey} pageTitle={pageTitle} />
+            {accountStatus === "signed-in" ? <button className="player-utility-link" onClick={() => { void fetch("/api/auth/sign-out", { body: "{}", credentials: "same-origin", headers: { "Content-Type": "application/json" }, method: "POST" }).then((response) => { if (response.ok) window.location.assign("/login"); }); }} type="button">
+              <span aria-hidden="true" className="player-utility-icon"><LogOut size={15} /></span>
+              <span>ออกจากระบบ</span>
+            </button> : null}
+          </div> : null}
         </div>
       </header>
 
@@ -250,7 +287,7 @@ export function AppShell({ children, fullBleed = false, pageTitle }: AppShellPro
         </div>
       ) : null}
 
-      <main className={fullBleed ? "player-main player-main--bleed" : "player-main"} id="player-main" ref={contentRef} tabIndex={-1}>
+      <main className={`${fullBleed ? "player-main player-main--bleed" : "player-main"}${showGameplayTools ? " player-main--with-dock" : ""}`} data-guide="player-main" id="player-main" ref={contentRef} tabIndex={-1}>
         {requiresAccount
           ? accountStatus === "signed-in"
             ? children
@@ -258,21 +295,22 @@ export function AppShell({ children, fullBleed = false, pageTitle }: AppShellPro
           : children}
       </main>
 
-      <nav aria-label="เครื่องมือหลัก" className="player-corner-tools">
+      {showGameplayTools ? <nav aria-label="เครื่องมือหลัก" className="player-corner-tools">
         <Link href="/profile">โปรไฟล์</Link>
         <Link href="/submit">ส่งคำตอบ</Link>
         <HelpButton guideKey={guideKey} pageTitle={pageTitle} />
-      </nav>
+      </nav> : null}
 
       {accountStatus === "signed-in" && guideKey !== "default" ? <AutoGuide guideKey={guideKey} pageTitle={pageTitle} /> : null}
       {accountStatus === "signed-in" && requiresAccount ? <AchievementToast /> : null}
 
-      <nav aria-label="เมนูด่วน" className="player-mobile-dock">
+      {showGameplayTools ? <nav aria-label="เมนูด่วน" className="player-mobile-dock">
         <Link aria-current={pathname.startsWith("/play") ? "page" : undefined} className="player-mobile-link" href="/play">แฟ้ม</Link>
         <Link aria-current={pathname === "/profile" ? "page" : undefined} className="player-mobile-link" href="/profile">โปรไฟล์</Link>
         <Link aria-current={pathname === "/submit" ? "page" : undefined} className="player-mobile-link" href="/submit">ส่งคำตอบ</Link>
         <HelpButton compact guideKey={guideKey} pageTitle={pageTitle} />
-      </nav>
+        </nav> : null}
+      <UiSound />
     </div>
   );
 }

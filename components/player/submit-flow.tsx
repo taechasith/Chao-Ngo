@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { aiChatUploadConsentVersion } from "../../lib/server/research-consent-copy";
+import { InvestigativeAction } from "./investigative-action";
 import { Panel, StatusBadge } from "./panel";
 
 type FormQuestion = {
@@ -23,19 +24,89 @@ type QuestionForm = {
   title: string;
 };
 
+type UploadSummary = { bytes: number; id: string; original_name: string; status: string };
+type UploadKind = "ai_chat_pdf" | "answer_attachment";
+type SelectedFile = { bytes: number; name: string };
+
+type SubmissionRequirements = {
+  allowedAnswerAttachmentExtensions: string[];
+  instrumentVersion: string;
+  maxAnswerAttachmentBytes: number;
+  requiredAnswerQuestionKeys: string[];
+  requiresAiChatPdf: boolean;
+  requiresAnswerTextOrAttachment: boolean;
+  requiresPosttest: boolean;
+};
+
 type SubmissionPayload = {
   acknowledgement: { acknowledged_at: string } | null;
-  answerForm: QuestionForm;
-  posttestForm: QuestionForm;
+  answerForm: QuestionForm | null;
+  posttestForm: QuestionForm | null;
+  requirements: SubmissionRequirements;
   status: string;
   submissionId: string;
-  upload: { bytes: number; id: string; original_name: string; status: string } | null;
+  upload: UploadSummary | null;
+  uploads: {
+    aiChatPdf: UploadSummary | null;
+    answerAttachment: UploadSummary | null;
+  };
 };
 
 type Choice = { label: string; value: string };
-type UploadResponse = { code?: string; upload?: { bytes: number; id: string; name: string; status: string } };
+type UploadResponse = {
+  code?: string;
+  upload?: { bytes: number; id: string; kind?: UploadKind; name: string; status: string };
+};
+
+type SubmissionCase = {
+  id: string;
+  eyebrow: string;
+  route: string;
+  subtitle: string;
+  title: string;
+};
 
 const maximumPdfBytes = 20 * 1024 * 1024;
+const selectableCases: SubmissionCase[] = [
+  {
+    eyebrow: "NODE ZONE / CASE",
+    id: "subgame-node-zone-quantum",
+    route: "/play/node-zone/quantum",
+    subtitle: "THE CORRECT TRAJECTORY",
+    title: "คดีควอนตัม",
+  },
+  {
+    eyebrow: "NODE ZONE / CASE",
+    id: "subgame-node-zone-space",
+    route: "/play/node-zone/space",
+    subtitle: "THIRTEEN DAYS IN UTOPIA",
+    title: "คดีอวกาศ",
+  },
+  {
+    eyebrow: "K.A. CASEFILES / NETLOOD CITY",
+    id: "subgame-ka-fintech",
+    route: "/play/ka-casefiles/maimee",
+    subtitle: "FinTech",
+    title: "คดี MAIMEE",
+  },
+  {
+    eyebrow: "K.A. CASEFILES / NETLOOD CITY",
+    id: "subgame-ka-wa-ve",
+    route: "/play/ka-casefiles/wa-ve",
+    subtitle: "Bio x Psychology",
+    title: "คดี WA VE",
+  },
+];
+
+function caseForSubgameId(subgameId: string): SubmissionCase {
+  return selectableCases.find((item) => item.id === subgameId) ?? {
+    eyebrow: "SUBMISSION / CASE",
+    id: subgameId,
+    route: "/play",
+    subtitle: "",
+    title: "แฟ้มคดี",
+  };
+}
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.ceil(bytes / 1024))} KB`;
@@ -51,18 +122,34 @@ function choices(value: unknown): Choice[] {
 
 function thaiError(code: string): string {
   const messages: Record<string, string> = {
-    UNAUTHENTICATED: "เข้าสู่ระบบก่อนส่งคำตอบ",
-    RESEARCH_CONSENT_REQUIRED: "กรุณาให้ความยินยอมการวิจัยก่อนดำเนินการ",
-    PRIVATE_STORAGE_UNAVAILABLE: "พื้นที่จัดเก็บไฟล์ส่วนตัวยังไม่พร้อมใช้งาน",
+    ACKNOWLEDGEMENT_REQUIRED: "กรุณายืนยันเงื่อนไขการใช้ไฟล์ PDF ก่อนอัปโหลด",
+    ANSWER_ATTACHMENT_NOT_ALLOWED: "แฟ้มคดีนี้ไม่รับไฟล์แนบคำตอบ",
+    ANSWER_ATTACHMENT_REQUIRED: "กรุณาเลือกไฟล์คำตอบ",
+    ANSWER_ATTACHMENT_SIZE_INVALID: "ไฟล์คำตอบต้องมีขนาดไม่เกินที่คดีกำหนด",
+    ANSWER_ATTACHMENT_TYPE_INVALID: "ไฟล์คำตอบต้องเป็น TXT, DOCX, PDF, PPTX, PNG, JPG หรือ JPEG ที่ตรวจสอบได้",
+    ANSWER_TEXT_OR_ATTACHMENT_REQUIRED: "กรุณากรอกคำตอบในระบบให้ครบ หรือแนบไฟล์คำตอบหนึ่งรายการ",
     PDF_SIGNATURE_INVALID: "ไฟล์นี้ไม่ใช่ PDF ที่อ่านได้",
     PDF_SIZE_INVALID: "ไฟล์ PDF ต้องมีขนาดไม่เกิน 20 MB",
     PDF_TYPE_INVALID: "กรุณาเลือกไฟล์ PDF เท่านั้น",
-    ACKNOWLEDGEMENT_REQUIRED: "กรุณายืนยันเงื่อนไขการใช้ไฟล์ PDF ก่อนอัปโหลด",
-    REQUEST_RATE_LIMITED: "คุณลองดำเนินการหลายครั้งเกินไป กรุณารอสักครู่แล้วลองใหม่",
+    PRIVATE_STORAGE_UNAVAILABLE: "พื้นที่จัดเก็บไฟล์ส่วนตัวยังไม่พร้อมใช้งาน",
+    RESEARCH_CONSENT_REQUIRED: "กรุณาให้ความยินยอมการวิจัยก่อนดำเนินการ",
     RESEARCH_DATA_EXPIRED: "ข้อมูลวิจัยของบัญชีนี้ไม่พร้อมใช้งานแล้ว",
+    REQUEST_RATE_LIMITED: "คุณลองดำเนินการหลายครั้งเกินไป กรุณารอสักครู่แล้วลองใหม่",
     SUBMISSION_CHANGED: "สถานะการส่งคำตอบเปลี่ยนไป กรุณารีเฟรชหน้าแล้วลองใหม่",
+    UNAUTHENTICATED: "เข้าสู่ระบบก่อนส่งคำตอบ",
+    UPLOAD_KIND_INVALID: "ชนิดไฟล์ที่ส่งไม่ถูกต้อง",
+    UPLOAD_LIMIT_REACHED: "มีไฟล์ประเภทนี้แนบไว้แล้ว",
   };
   return messages[code] ?? "ดำเนินการไม่สำเร็จ ตรวจสอบข้อมูลแล้วลองอีกครั้ง";
+}
+
+function attachmentAccept(extensions: string[]): string {
+  return extensions.map((extension) => `.${extension}`).join(",");
+}
+
+function uploadName(upload: UploadSummary | SelectedFile | null | undefined): string {
+  if (!upload) return "";
+  return "original_name" in upload ? upload.original_name : upload.name;
 }
 
 export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: string }) {
@@ -75,7 +162,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
   const [message, setMessage] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
-  const [selectedFile, setSelectedFile] = useState<{ bytes: number; name: string } | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<Partial<Record<UploadKind, SelectedFile>>>({});
   const [saving, setSaving] = useState(false);
   const [aiPdfNotice, setAiPdfNotice] = useState("");
   const [researchReady, setResearchReady] = useState<boolean | null>(null);
@@ -95,6 +182,8 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
     setSubgameId(selectedSubgameId);
     setLoading(true);
     setMessage("");
+    setSelectedFiles({});
+    completedSessions.current.clear();
     try {
       const response = await fetch("/api/submissions", {
         body: JSON.stringify({ subgameId: selectedSubgameId }),
@@ -110,8 +199,8 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
       setSubmission(result.submission);
       setAcknowledged(Boolean(result.submission.acknowledgement));
       const initial = {
-        ...result.submission.answerForm.responses,
-        ...result.submission.posttestForm.responses,
+        ...(result.submission.answerForm?.responses ?? {}),
+        ...(result.submission.posttestForm?.responses ?? {}),
       };
       answersRef.current = initial;
       setAnswers(initial);
@@ -177,8 +266,17 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
     }, 600));
   }
 
-  async function completeForm(form: QuestionForm): Promise<boolean> {
-    if (form.completed || completedSessions.current.has(form.sessionId)) return true;
+  async function completeForm(form: QuestionForm | null, requiredQuestionKeys: string[] = []): Promise<boolean> {
+    if (!form || form.completed || completedSessions.current.has(form.sessionId)) return true;
+    const missingText = form.questions.some((question) => {
+      if (!requiredQuestionKeys.includes(question.key)) return false;
+      const value = answersRef.current[question.id];
+      return typeof value !== "string" || !value.trim();
+    });
+    if (missingText) {
+      setMessage("กรุณากรอกคำตอบในระบบให้ครบ หรือเลือกส่งไฟล์คำตอบแทน");
+      return false;
+    }
     for (const question of form.questions) {
       const value = answersRef.current[question.id];
       if (timers.current.has(`${form.sessionId}:${question.id}`)) {
@@ -201,7 +299,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
 
   async function updateAcknowledgement(next: boolean) {
     const current = submissionRef.current;
-    if (!current || acknowledgementPending) return;
+    if (!current || acknowledgementPending || !current.requirements.requiresAiChatPdf) return;
     setAcknowledgementPending(true);
     try {
       const response = await fetch(`/api/submissions/${current.submissionId}/acknowledgement`, {
@@ -211,7 +309,8 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
         method: next ? "POST" : "DELETE",
       });
       if (!response.ok) {
-        setMessage("บันทึกการยืนยันไม่ได้ กรุณาลองอีกครั้ง");
+        const result = await response.json().catch(() => ({})) as { code?: string };
+        setMessage(thaiError(result.code ?? ""));
         return;
       }
       setAcknowledged(next);
@@ -226,19 +325,21 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
     }
   }
 
-  async function uploadPdf(file?: File) {
+  async function uploadFile(kind: UploadKind, file?: File) {
     const current = submissionRef.current;
     if (!current || !file) return;
-    if (file.size > maximumPdfBytes) {
-      setMessage(thaiError("PDF_SIZE_INVALID"));
+    const maximumBytes = kind === "ai_chat_pdf" ? maximumPdfBytes : current.requirements.maxAnswerAttachmentBytes;
+    if (file.size > maximumBytes) {
+      setMessage(thaiError(kind === "ai_chat_pdf" ? "PDF_SIZE_INVALID" : "ANSWER_ATTACHMENT_SIZE_INVALID"));
       return;
     }
-    setSelectedFile({ bytes: file.size, name: file.name });
+    setSelectedFiles((value) => ({ ...value, [kind]: { bytes: file.size, name: file.name } }));
     setUploading(true);
     setUploadProgress(0);
     setMessage("");
     const form = new FormData();
     form.set("file", file);
+    form.set("kind", kind);
     try {
       const result = await new Promise<{ body: UploadResponse; ok: boolean }>((resolve, reject) => {
         const request = new XMLHttpRequest();
@@ -258,16 +359,37 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
         request.send(form);
       });
       if (!result.ok || !result.body.upload) {
+        setSelectedFiles((value) => {
+          const next = { ...value };
+          delete next[kind];
+          return next;
+        });
         setMessage(thaiError(result.body.code ?? ""));
         return;
       }
-      setSubmission((value) => value ? {
+      const uploaded: UploadSummary = {
+        bytes: result.body.upload.bytes,
+        id: result.body.upload.id,
+        original_name: result.body.upload.name,
+        status: result.body.upload.status,
+      };
+      setSubmission((value) => {
+        if (!value) return value;
+        return kind === "ai_chat_pdf"
+          ? { ...value, upload: uploaded, uploads: { ...value.uploads, aiChatPdf: uploaded } }
+          : { ...value, uploads: { ...value.uploads, answerAttachment: uploaded } };
+      });
+      setSelectedFiles((value) => ({
         ...value,
-        upload: { bytes: result.body.upload!.bytes, id: result.body.upload!.id, original_name: result.body.upload!.name, status: result.body.upload!.status },
-      } : value);
-      setSelectedFile({ bytes: result.body.upload.bytes, name: result.body.upload.name });
+        [kind]: { bytes: result.body.upload!.bytes, name: result.body.upload!.name },
+      }));
       setUploadProgress(100);
     } catch {
+      setSelectedFiles((value) => {
+        const next = { ...value };
+        delete next[kind];
+        return next;
+      });
       setMessage("อัปโหลดไม่สำเร็จ ตรวจสอบเครือข่ายแล้วลองใหม่");
     } finally {
       setUploading(false);
@@ -281,18 +403,20 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
     setSaving(true);
     setMessage("");
     try {
-      if (!(await completeForm(current.answerForm)) || !(await completeForm(current.posttestForm))) return;
+      const hasAnswerAttachment = Boolean(current.uploads.answerAttachment);
+      if (
+        current.requirements.requiresAnswerTextOrAttachment &&
+        !hasAnswerAttachment &&
+        !(await completeForm(current.answerForm, current.requirements.requiredAnswerQuestionKeys))
+      ) return;
+      if (current.requirements.requiresPosttest && !(await completeForm(current.posttestForm))) return;
       const response = await fetch(`/api/submissions/${current.submissionId}/finalize`, {
         credentials: "same-origin",
         method: "POST",
       });
       const result = await response.json() as { code?: string; status?: string };
       if (!response.ok) {
-        setMessage(result.code === "AI_CHAT_PDF_REQUIRED"
-          ? "กรุณาอัปโหลด PDF บทสนทนากับ AI ก่อนส่งคำตอบ"
-          : result.code === "ACKNOWLEDGEMENT_REQUIRED"
-            ? "กรุณายืนยันการใช้ไฟล์ PDF ก่อนส่งคำตอบ"
-            : "ตอบคำถามที่จำเป็นให้ครบและลองอีกครั้ง");
+        setMessage(thaiError(result.code ?? ""));
         return;
       }
       setSubmission((value) => value ? { ...value, status: "submitted" } : value);
@@ -317,7 +441,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
           <p>ระบบรับคำตอบของงานวิจัยกำลังเตรียมเปิดใช้งาน</p>
           <div className="player-locked-reason">
             <strong>สิ่งที่กำลังรอ</strong>
-            <p>การส่งคำตอบวิจัยยังไม่เปิดใช้งานบนระบบนี้ ระบบจะเปิดรับ post-test และไฟล์ AI chat เมื่อการตั้งค่าฝั่งงานวิจัยพร้อม</p>
+            <p>การส่งคำตอบจะเปิดเมื่อการตั้งค่าฝั่งงานวิจัยและสิทธิ์เข้าร่วมพร้อม</p>
           </div>
           <div className="flex flex-wrap gap-3">
             <Link className="player-button player-button--primary" href="/play">กลับไปที่แฟ้มคดี</Link>
@@ -327,8 +451,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
         <aside className="player-locked-rail" aria-label="ลำดับเมื่อระบบพร้อม">
           <span><b>01</b>เลือกคดี</span>
           <span><b>02</b>สำรวจหลักฐาน</span>
-          <span><b>03</b>ทำ post-test</span>
-          <span><b>04</b>แนบไฟล์ AI chat ตาม Consent</span>
+          <span><b>03</b>ส่งคำตอบตามเงื่อนไขของคดี</span>
         </aside>
       </section>
     );
@@ -338,19 +461,16 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
     return (
       <div className="player-content">
         <header className="player-page-heading" data-player-reveal="heading">
-          <StatusBadge>ส่งคำตอบ / POST-TEST</StatusBadge>
+          <StatusBadge>ส่งคำตอบ / CASEFILE</StatusBadge>
           <h1 className="font-display text-3xl text-white sm:text-4xl">เมื่อคุณคิดว่ารู้คำตอบแล้ว</h1>
-          <p className="max-w-2xl text-sm leading-6 text-white/70">เลือกคดีที่ทำเสร็จแล้ว จากนั้นบันทึกคำตอบและทำแบบสอบถามหลังเล่น</p>
+          <p className="max-w-2xl text-sm leading-6 text-white/70">เลือกคดีที่ทำเสร็จแล้ว จากนั้นส่งคำตอบตามเงื่อนไขของแฟ้มคดีนั้น</p>
         </header>
-        <div className="grid gap-3 sm:grid-cols-2" data-player-reveal="primary">
-          {[
-            ["subgame-node-zone-quantum", "คดีควอนตัม", "THE CORRECT TRAJECTORY"],
-            ["subgame-node-zone-space", "คดีอวกาศ", "THIRTEEN DAYS IN UTOPIA"],
-          ].map(([id, title, subtitle]) => (
-            <button className="player-choice" key={id} onClick={() => void startDraft(id)} type="button">
-              <span className="player-eyebrow">NODE ZONE / CASE</span>
-              <span className="font-display text-2xl text-white">{title}</span>
-              <span className="text-xs text-white/55">{subtitle}</span>
+        <div className="grid gap-3 sm:grid-cols-2" data-guide="submit-case" data-player-reveal="primary">
+          {selectableCases.map((item) => (
+            <button className="player-choice" key={item.id} onClick={() => void startDraft(item.id)} type="button">
+              <span className="player-eyebrow">{item.eyebrow}</span>
+              <span className="font-display text-2xl text-white">{item.title}</span>
+              <span className="text-xs text-white/55">{item.subtitle}</span>
             </button>
           ))}
         </div>
@@ -363,6 +483,21 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
     return <Panel><StatusBadge>ส่งแล้ว</StatusBadge><h1 className="mt-4 font-display text-3xl text-white">คำตอบของคุณถูกบันทึกแล้ว</h1><p className="mt-3 text-sm leading-6 text-white/70">กลับไปดูความคืบหน้าได้ที่ <Link className="underline" href="/profile">โปรไฟล์</Link></p></Panel>;
   }
 
+  const activeCase = caseForSubgameId(subgameId);
+  const answerAttachmentAllowed = submission.requirements.requiresAnswerTextOrAttachment &&
+    submission.requirements.allowedAnswerAttachmentExtensions.length > 0;
+  const stages = [
+    { href: "#submission-stage-case", label: "คดีที่กำลังส่ง" },
+    ...(submission.answerForm ? [{ href: "#submission-stage-answer", label: "คำตอบ" }] : []),
+    ...(answerAttachmentAllowed ? [{ href: "#submission-stage-answer-attachment", label: "ไฟล์คำตอบ" }] : []),
+    ...(submission.posttestForm && submission.requirements.requiresPosttest ? [{ href: "#submission-stage-posttest", label: "post-test" }] : []),
+    ...(submission.requirements.requiresAiChatPdf ? [{ href: "#submission-stage-ai-pdf", label: "AI chat PDF" }] : []),
+    { href: "#submission-stage-final", label: "ตรวจสอบและส่ง" },
+  ];
+  const answerAttachment = selectedFiles.answer_attachment ?? submission.uploads.answerAttachment;
+  const aiChatPdf = selectedFiles.ai_chat_pdf ?? submission.uploads.aiChatPdf;
+  const finalRequiresAi = submission.requirements.requiresAiChatPdf;
+
   return (
     <div className="player-content">
       <header className="player-page-heading" data-player-reveal="heading">
@@ -371,50 +506,94 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
         <p className="text-sm text-white/65">แบบร่างบันทึกอัตโนมัติเมื่อคุณเปลี่ยนคำตอบ</p>
       </header>
       <nav aria-label="ส่วนของแฟ้มส่งคำตอบ" className="player-form-stages">
-        {["คดีที่กำลังส่ง", "คำตอบ", "post-test", "AI chat PDF", "ตรวจสอบและส่ง"].map((label, index) => <a href={`#submission-stage-${index + 1}`} key={label}><span>{String(index + 1).padStart(2, "0")}</span>{label}</a>)}
+        {stages.map((stage, index) => <a href={stage.href} key={stage.href}><span>{String(index + 1).padStart(2, "0")}</span>{stage.label}</a>)}
       </nav>
-      <section className="player-submission-case" id="submission-stage-1">
-        <div><span className="player-eyebrow">01 / คดีที่กำลังส่ง</span><h2>{subgameId.endsWith("quantum") ? "THE CORRECT TRAJECTORY" : "THIRTEEN DAYS IN UTOPIA"}</h2></div>
-        <Link className="player-text-action" href={`/play/node-zone/${subgameId.endsWith("quantum") ? "quantum" : "space"}`}>กลับไปเปิดหลักฐาน</Link>
+      <section className="player-submission-case" id="submission-stage-case">
+        <div><span className="player-eyebrow">01 / {activeCase.eyebrow}</span><h2>{activeCase.title}</h2></div>
+        <Link className="player-text-action" href={activeCase.route}>กลับไปเปิดหลักฐาน</Link>
       </section>
-      <QuestionnairePanel form={submission.answerForm} answers={answers} onChange={changeAnswer} onComplete={completeForm} stage="02" />
-      <QuestionnairePanel form={submission.posttestForm} answers={answers} onChange={changeAnswer} onComplete={completeForm} stage="03" />
-      <Panel id="submission-stage-4">
-        <span className="player-eyebrow">04 / AI CHAT PDF</span>
-        <h2 className="mt-2 font-display text-2xl text-white">ไฟล์ PDF บทสนทนากับ AI</h2>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-white/70">ไฟล์จะถูกเก็บในพื้นที่ส่วนตัวเพื่อวิเคราะห์งานวิจัยเท่านั้น จำกัดขนาดไม่เกิน 20 MB และไม่แสดงผ่านคลังไฟล์สาธารณะ</p>
-        <figure className="mt-5 max-w-sm border border-white/15 bg-black/25 p-2">
-          <img alt="ตัวอย่างการบันทึกบทสนทนา AI เป็น PDF" className="aspect-[16/9] w-full object-cover object-top" src="/ai-chat-pdf-instructions.png" />
-          <figcaption className="px-1 pt-2 text-xs leading-5 text-white/55">บันทึกบทสนทนากับ AI เป็น PDF แล้วเลือกไฟล์นั้นด้านล่าง</figcaption>
-        </figure>
-        <label className="mt-5 flex min-h-12 items-start gap-3 border border-white/15 p-3 text-sm leading-6 text-white/80">
-          <input checked={acknowledged} className="mt-1 size-4 accent-cyan-200" disabled={acknowledgementPending} onChange={(event) => void updateAcknowledgement(event.target.checked)} type="checkbox" />
-          <span>{aiPdfNotice || "ฉันเข้าใจว่าในการส่งคำตอบ ระบบจะขอให้ฉันอัปโหลดไฟล์ PDF บทสนทนากับ AI เพื่อใช้ในการวิเคราะห์เนื้อหาสำหรับงานวิจัย และไฟล์ดังกล่าวจะถูกจัดเก็บในพื้นที่ส่วนตัว"}</span>
-        </label>
-        {acknowledgementPending ? <p className="mt-3 text-sm text-white/65" role="status">กำลังบันทึกการยืนยัน…</p> : null}
-        <label className="mt-5 grid gap-2 text-sm text-white/80">
-          <span>{selectedFile || submission.upload ? "เลือกไฟล์ใหม่เพื่อแทนไฟล์ปัจจุบัน" : "เลือกไฟล์ PDF"}</span>
-          <input accept="application/pdf,.pdf" aria-describedby="pdf-upload-state" className="min-h-12 max-w-full border border-white/20 bg-black p-2 text-sm file:mr-3 file:min-h-9 file:border-0 file:bg-white/10 file:px-3 file:text-white" disabled={!acknowledged || uploading || acknowledgementPending} onChange={(event) => void uploadPdf(event.currentTarget.files?.[0])} type="file" />
-        </label>
-        <p className="mt-3 text-sm text-white/65" id="pdf-upload-state" role="status">
-          {uploading
-            ? `กำลังอัปโหลดไปยังพื้นที่ส่วนตัว${uploadProgress === null ? "" : ` ${uploadProgress}%`}`
-            : selectedFile
-              ? `แนบแล้ว: ${selectedFile.name} (${formatFileSize(selectedFile.bytes)})`
-              : submission.upload
-                ? `แนบแล้ว: ${submission.upload.original_name} (${formatFileSize(submission.upload.bytes)})`
+      {submission.answerForm ? (
+        <QuestionnairePanel
+          answers={answers}
+          form={submission.answerForm}
+          guideTarget="submit-answer"
+          key={submission.answerForm.sessionId}
+          onChange={changeAnswer}
+          onComplete={completeForm}
+          requiredQuestionKeys={submission.requirements.requiredAnswerQuestionKeys}
+          sectionId="submission-stage-answer"
+          stage="02"
+        />
+      ) : null}
+      {answerAttachmentAllowed ? (
+        <Panel data-guide="submit-answer-attachment" id="submission-stage-answer-attachment">
+          <span className="player-eyebrow">FILE / ANSWER ATTACHMENT</span>
+          <h2 className="mt-2 font-display text-2xl text-white">ส่งคำตอบเป็นไฟล์</h2>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-white/70">เลือกส่งคำตอบที่กรอกในระบบ หรือแนบไฟล์หนึ่งรายการแทนกันได้ ไฟล์จะเก็บในพื้นที่ส่วนตัวและไม่แสดงผ่านคลังสาธารณะ</p>
+          <label className="mt-5 grid gap-2 text-sm text-white/80">
+            <span>{answerAttachment ? "มีไฟล์คำตอบแนบแล้ว" : `อนุญาต: ${submission.requirements.allowedAnswerAttachmentExtensions.map((extension) => extension.toUpperCase()).join(", ")}`}</span>
+            <input accept={attachmentAccept(submission.requirements.allowedAnswerAttachmentExtensions)} aria-describedby="answer-attachment-state" className="min-h-12 max-w-full border border-white/20 bg-black p-2 text-sm file:mr-3 file:min-h-9 file:border-0 file:bg-white/10 file:px-3 file:text-white" disabled={uploading || Boolean(submission.uploads.answerAttachment)} onChange={(event) => void uploadFile("answer_attachment", event.currentTarget.files?.[0])} type="file" />
+          </label>
+          <p className="mt-3 text-sm text-white/65" id="answer-attachment-state" role="status">
+            {uploading
+              ? `กำลังอัปโหลดไปยังพื้นที่ส่วนตัว${uploadProgress === null ? "" : ` ${uploadProgress}%`}`
+              : answerAttachment
+                ? `แนบแล้ว: ${uploadName(answerAttachment)} (${formatFileSize(answerAttachment.bytes)})`
+                : `ยังไม่ได้แนบไฟล์คำตอบ (ไม่เกิน ${formatFileSize(submission.requirements.maxAnswerAttachmentBytes)})`}
+          </p>
+        </Panel>
+      ) : null}
+      {submission.posttestForm && submission.requirements.requiresPosttest ? (
+        <QuestionnairePanel
+          answers={answers}
+          form={submission.posttestForm}
+          guideTarget="submit-posttest"
+          key={submission.posttestForm.sessionId}
+          onChange={changeAnswer}
+          onComplete={completeForm}
+          sectionId="submission-stage-posttest"
+          stage="03"
+        />
+      ) : null}
+      {submission.requirements.requiresAiChatPdf ? (
+        <Panel data-guide="submit-ai-pdf" id="submission-stage-ai-pdf">
+          <span className="player-eyebrow">AI CHAT PDF</span>
+          <h2 className="mt-2 font-display text-2xl text-white">ไฟล์ PDF บทสนทนากับ AI</h2>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-white/70">ไฟล์จะถูกเก็บในพื้นที่ส่วนตัวเพื่อวิเคราะห์งานวิจัยเท่านั้น จำกัดขนาดไม่เกิน 20 MB และไม่แสดงผ่านคลังไฟล์สาธารณะ</p>
+          <figure className="mt-5 max-w-sm border border-white/15 bg-black/25 p-2">
+            <img alt="ตัวอย่างการบันทึกบทสนทนา AI เป็น PDF" className="aspect-[16/9] w-full object-cover object-top" src="/ai-chat-pdf-instructions.png" />
+            <figcaption className="px-1 pt-2 text-xs leading-5 text-white/55">บันทึกบทสนทนากับ AI เป็น PDF แล้วเลือกไฟล์นั้นด้านล่าง</figcaption>
+          </figure>
+          <label className="mt-5 flex min-h-12 items-start gap-3 border border-white/15 p-3 text-sm leading-6 text-white/80">
+            <input checked={acknowledged} className="mt-1 size-4 accent-cyan-200" disabled={acknowledgementPending} onChange={(event) => void updateAcknowledgement(event.target.checked)} type="checkbox" />
+            <span>{aiPdfNotice || "ฉันเข้าใจว่าในการส่งคำตอบ ระบบจะขอให้ฉันอัปโหลดไฟล์ PDF บทสนทนากับ AI เพื่อใช้ในงานวิจัย และไฟล์ดังกล่าวจะถูกจัดเก็บในพื้นที่ส่วนตัว"}</span>
+          </label>
+          {acknowledgementPending ? <p className="mt-3 text-sm text-white/65" role="status">กำลังบันทึกการยืนยัน…</p> : null}
+          <label className="mt-5 grid gap-2 text-sm text-white/80">
+            <span>{aiChatPdf ? "มีไฟล์ PDF แนบแล้ว" : "เลือกไฟล์ PDF"}</span>
+            <input accept="application/pdf,.pdf" aria-describedby="pdf-upload-state" className="min-h-12 max-w-full border border-white/20 bg-black p-2 text-sm file:mr-3 file:min-h-9 file:border-0 file:bg-white/10 file:px-3 file:text-white" disabled={!acknowledged || uploading || acknowledgementPending} onChange={(event) => void uploadFile("ai_chat_pdf", event.currentTarget.files?.[0])} type="file" />
+          </label>
+          <p className="mt-3 text-sm text-white/65" id="pdf-upload-state" role="status">
+            {uploading
+              ? `กำลังอัปโหลดไปยังพื้นที่ส่วนตัว${uploadProgress === null ? "" : ` ${uploadProgress}%`}`
+              : aiChatPdf
+                ? `แนบแล้ว: ${uploadName(aiChatPdf)} (${formatFileSize(aiChatPdf.bytes)})`
                 : "ยังไม่ได้เลือกไฟล์ PDF"}
-        </p>
-      </Panel>
-      <section className="player-submission-review" id="submission-stage-5">
-        <span className="player-eyebrow">05 / ตรวจสอบและส่ง</span>
+          </p>
+        </Panel>
+      ) : null}
+      <section className="player-submission-review" data-guide="submit-final" id="submission-stage-final">
+        <span className="player-eyebrow">FINAL / ตรวจสอบและส่ง</span>
         <h2>พร้อมยืนยันสิ่งที่คุณคิดแล้วหรือยัง?</h2>
-        <p>ตรวจคำตอบและ post-test ให้ครบ พร้อมแนบไฟล์ PDF บทสนทนากับ AI</p>
-        <p className="player-upload-state" role="status">{submission.upload ? `แนบแล้ว: ${submission.upload.original_name}` : "ยังไม่ได้แนบไฟล์ PDF"}</p>
+        <p>{finalRequiresAi
+          ? "ตรวจคำตอบและ post-test ให้ครบ พร้อมแนบไฟล์ PDF บทสนทนากับ AI"
+          : "กรอกคำตอบในระบบให้ครบ หรือแนบไฟล์คำตอบหนึ่งรายการ แล้วส่งคำตอบได้ทันที"}</p>
+        {answerAttachmentAllowed ? <p className="player-upload-state" role="status">{submission.uploads.answerAttachment ? `ไฟล์คำตอบ: ${submission.uploads.answerAttachment.original_name}` : "ยังไม่ได้แนบไฟล์คำตอบ (กรอกคำตอบในระบบแทนได้)"}</p> : null}
+        {finalRequiresAi ? <p className="player-upload-state" role="status">{submission.uploads.aiChatPdf ? `ไฟล์ AI chat PDF: ${submission.uploads.aiChatPdf.original_name}` : "ยังไม่ได้แนบไฟล์ PDF"}</p> : null}
         {message ? <p aria-live="polite" className="mt-4 text-sm text-red-200">{message}</p> : null}
-        <button className="player-button player-button--primary mt-6 w-full sm:w-auto" disabled={saving || uploading || acknowledgementPending || !acknowledged || !submission.upload} onClick={() => void finalize()} type="button">
+        <InvestigativeAction className="mt-6 w-full sm:w-auto" disabled={saving || uploading || acknowledgementPending || (finalRequiresAi && (!acknowledged || !submission.uploads.aiChatPdf))} onClick={() => void finalize()}>
           {saving ? "กำลังส่งคำตอบ…" : "ส่งคำตอบ"}
-        </button>
+        </InvestigativeAction>
         <p className="mt-3 text-xs leading-5 text-white/50">ยังไม่มั่นใจ? กลับไปเปิดหลักฐานได้ทุกเมื่อ</p>
       </section>
     </div>
@@ -424,14 +603,20 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
 function QuestionnairePanel({
   answers,
   form,
+  guideTarget,
   onChange,
   onComplete,
+  requiredQuestionKeys = [],
+  sectionId,
   stage,
 }: {
   answers: Record<string, unknown>;
   form: QuestionForm;
+  guideTarget: string;
   onChange: (sessionId: string, questionId: string, value: unknown) => void;
-  onComplete: (form: QuestionForm) => Promise<boolean>;
+  onComplete: (form: QuestionForm, requiredQuestionKeys?: string[]) => Promise<boolean>;
+  requiredQuestionKeys?: string[];
+  sectionId: string;
   stage: string;
 }) {
   const [complete, setComplete] = useState(form.completed);
@@ -439,46 +624,49 @@ function QuestionnairePanel({
   const [saveError, setSaveError] = useState(false);
 
   return (
-    <Panel id={`submission-stage-${Number(stage)}`}>
+    <Panel data-guide={guideTarget} id={sectionId}>
       <span className="player-eyebrow">{stage} / {stage === "02" ? "คำตอบของคุณ" : "POST-TEST"}</span>
       <h2 className="mt-2 font-display text-2xl">{form.title}</h2>
       <div className="mt-5 grid gap-6">
-        {form.questions.map((question) => (
-          <fieldset className="player-question text-sm leading-6 text-white/85" disabled={complete} key={question.id}>
-            <legend>{question.promptTh}{question.required ? <span className="ml-1 text-orange-200">*</span> : null}</legend>
-            {question.type === "scale" ? (
-              <span className="grid grid-cols-5 gap-2">
-                {Array.from({ length: 5 }, (_, index) => index + 1).map((value) => (
-                  <label className="player-scale-option" key={value}>
-                    <input aria-label={`${question.promptTh}: ${value}`} checked={answers[question.id] === value} className="sr-only" name={question.id} onChange={() => onChange(form.sessionId, question.id, value)} type="radio" />{value}
-                  </label>
-                ))}
-              </span>
-            ) : question.type === "single" ? (
-              <select aria-label={question.promptTh} className="player-input" name={question.id} value={typeof answers[question.id] === "string" ? String(answers[question.id]) : ""} onChange={(event) => onChange(form.sessionId, question.id, event.currentTarget.value)}>
-                <option value="">เลือกคำตอบ</option>
-                {choices(question.options).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
-            ) : question.type === "multi" ? (
-              <span className="grid gap-2">
-                {choices(question.options).map((option) => {
-                  const selected = Array.isArray(answers[question.id]) ? answers[question.id] as string[] : [];
-                  return <label className="player-option" key={option.value}><input checked={selected.includes(option.value)} name={question.id} onChange={(event) => onChange(form.sessionId, question.id, event.target.checked ? [...selected, option.value] : selected.filter((item) => item !== option.value))} type="checkbox" /><span>{option.label}</span></label>;
-                })}
-              </span>
-            ) : question.type === "short" ? (
-              <input aria-label={question.promptTh} className="player-input" name={question.id} maxLength={500} value={typeof answers[question.id] === "string" ? String(answers[question.id]) : ""} onChange={(event) => onChange(form.sessionId, question.id, event.currentTarget.value)} />
-            ) : (
-              <textarea aria-label={question.promptTh} className="player-input min-h-32 resize-y leading-6" name={question.id} maxLength={4000} value={typeof answers[question.id] === "string" ? String(answers[question.id]) : ""} onChange={(event) => onChange(form.sessionId, question.id, event.currentTarget.value)} />
-            )}
-          </fieldset>
-        ))}
+        {form.questions.map((question) => {
+          const required = question.required || requiredQuestionKeys.includes(question.key);
+          return (
+            <fieldset className="player-question text-sm leading-6 text-white/85" disabled={complete} key={question.id}>
+              <legend>{question.promptTh}{required ? <span className="ml-1 text-orange-200">*</span> : null}</legend>
+              {question.type === "scale" ? (
+                <span className="grid grid-cols-5 gap-2">
+                  {Array.from({ length: 5 }, (_, index) => index + 1).map((value) => (
+                    <label className="player-scale-option" key={value}>
+                      <input aria-label={`${question.promptTh}: ${value}`} checked={answers[question.id] === value} className="sr-only" name={question.id} onChange={() => onChange(form.sessionId, question.id, value)} type="radio" />{value}
+                    </label>
+                  ))}
+                </span>
+              ) : question.type === "single" ? (
+                <select aria-label={question.promptTh} className="player-input" name={question.id} value={typeof answers[question.id] === "string" ? String(answers[question.id]) : ""} onChange={(event) => onChange(form.sessionId, question.id, event.currentTarget.value)}>
+                  <option value="">เลือกคำตอบ</option>
+                  {choices(question.options).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              ) : question.type === "multi" ? (
+                <span className="grid gap-2">
+                  {choices(question.options).map((option) => {
+                    const selected = Array.isArray(answers[question.id]) ? answers[question.id] as string[] : [];
+                    return <label className="player-option" key={option.value}><input checked={selected.includes(option.value)} name={question.id} onChange={(event) => onChange(form.sessionId, question.id, event.target.checked ? [...selected, option.value] : selected.filter((item) => item !== option.value))} type="checkbox" /><span>{option.label}</span></label>;
+                  })}
+                </span>
+              ) : question.type === "short" ? (
+                <input aria-label={question.promptTh} className="player-input" name={question.id} maxLength={500} value={typeof answers[question.id] === "string" ? String(answers[question.id]) : ""} onChange={(event) => onChange(form.sessionId, question.id, event.currentTarget.value)} />
+              ) : (
+                <textarea aria-label={question.promptTh} className="player-input min-h-32 resize-y leading-6" name={question.id} maxLength={4000} value={typeof answers[question.id] === "string" ? String(answers[question.id]) : ""} onChange={(event) => onChange(form.sessionId, question.id, event.currentTarget.value)} />
+              )}
+            </fieldset>
+          );
+        })}
       </div>
       {saveError ? <p className="mt-4 text-sm text-red-200" role="alert">ยังบันทึกส่วนนี้ไม่ได้ ตรวจคำตอบที่จำเป็นและการเชื่อมต่อ แล้วลองอีกครั้ง</p> : null}
       <button className="player-button mt-6 w-full sm:w-auto" disabled={saving || complete} onClick={async () => {
         setSaving(true);
         setSaveError(false);
-        try { const ok = await onComplete(form); setComplete(ok); setSaveError(!ok); }
+        try { const ok = await onComplete(form, requiredQuestionKeys); setComplete(ok); setSaveError(!ok); }
         catch { setSaveError(true); }
         finally { setSaving(false); }
       }} type="button">

@@ -9,6 +9,12 @@ describe("assertPublicAssetKey", () => {
     );
   });
 
+  it("accepts approved K.A. Casefiles public keys", () => {
+    expect(assertPublicAssetKey("games/ka-casefiles/wa-ve/incident-brief.pdf")).toBe(
+      "games/ka-casefiles/wa-ve/incident-brief.pdf",
+    );
+  });
+
   it("rejects private or traversal-style keys", () => {
     expect(() => assertPublicAssetKey("uploads/private.pdf")).toThrow();
     expect(() => assertPublicAssetKey("games/node-zone/../private.pdf")).toThrow();

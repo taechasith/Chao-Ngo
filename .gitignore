@@ -11,6 +11,7 @@ coverage/
 # Playwright CLI output (may contain credentials)
 .playwright-cli/
 /dist/
+/settings-desktop.png
 
 # Local-only agent/project guides. The backend guide contains R2 credentials.
 .agents/
