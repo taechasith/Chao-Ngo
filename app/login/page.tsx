@@ -4,7 +4,7 @@ import { AppShell } from "../../components/player/app-shell";
 import { AuthForm } from "../../components/player/auth-form";
 import { Panel } from "../../components/player/panel";
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string; reset?: string }> }) {
   const params = await searchParams;
   const redirectTo = params.next?.startsWith("/") && !params.next.startsWith("//") ? params.next : undefined;
 
@@ -21,10 +21,12 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <Panel>
             <AuthForm mode="login" redirectTo={redirectTo} />
           </Panel>
+          {params.reset === "success" ? <p className="mt-4 text-sm text-cyan-100">ตั้งรหัสผ่านใหม่แล้ว เข้าสู่ระบบได้เลย</p> : null}
           <p className="mt-5 text-sm text-white/70">
             ยังไม่มีบัญชี?{" "}
             <Link className="text-[#bfe6e2] underline decoration-white/30 underline-offset-4" href={redirectTo ? `/signup?next=${encodeURIComponent(redirectTo)}` : "/signup"}>สร้างบัญชี</Link>
           </p>
+          <p className="mt-3 text-sm text-white/70"><Link className="text-[#bfe6e2] underline decoration-white/30 underline-offset-4" href="/forgot-password">ลืมรหัสผ่าน?</Link></p>
         </div>
       </div>
     </AppShell>

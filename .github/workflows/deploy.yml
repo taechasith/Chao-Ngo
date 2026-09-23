@@ -69,6 +69,20 @@ jobs:
 
           printf '%s' "$TURNSTILE_SECRET_KEY" | npx wrangler secret put TURNSTILE_SECRET_KEY
 
+      - name: Configure Resend runtime secret
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: c24fed68f8dc59cc339bd821d215bba8
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RESEND_API_KEY:-}" ]; then
+            echo "RESEND_API_KEY is not configured in GitHub Actions secrets."
+            exit 1
+          fi
+
+          printf '%s' "$RESEND_API_KEY" | npx wrangler secret put RESEND_API_KEY
+
       - name: Deploy to Cloudflare
         run: npm run deploy
         env:

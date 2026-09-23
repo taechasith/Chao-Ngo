@@ -62,13 +62,20 @@ export function AuthForm({ mode, redirectTo }: AuthFormProps) {
 
     try {
       const response = await fetch(isSignup ? "/api/auth/sign-up/email" : "/api/auth/sign-in/email", {
-        body: JSON.stringify(isSignup ? { email, name, password, turnstileToken } : { email, password, turnstileToken }),
+        body: JSON.stringify(isSignup
+          ? { callbackURL: redirectTo ?? "/onboarding", email, name, password, turnstileToken }
+          : { callbackURL: redirectTo ?? "/onboarding", email, password, turnstileToken }),
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
 
       if (!response.ok) {
+        const responseBody = await response.json().catch(() => null) as { code?: string } | null;
+        if (responseBody?.code === "EMAIL_NOT_VERIFIED") {
+          router.replace(`/verify-email?next=${encodeURIComponent(redirectTo ?? "/onboarding")}`);
+          return;
+        }
         setStatus({ kind: "error", message: messageForFailure(response.status) });
         setTurnstileToken(null);
         setTurnstileResetKey((value) => value + 1);
@@ -78,11 +85,11 @@ export function AuthForm({ mode, redirectTo }: AuthFormProps) {
       setStatus({
         kind: "success",
         message: isSignup
-          ? "สร้างบัญชีสำเร็จ กำลังเข้าสู่แบบสอบถามก่อนเริ่มเล่น"
+          ? "สร้างบัญชีสำเร็จ โปรดตรวจกล่องจดหมายเพื่อยืนยันอีเมล"
           : "เข้าสู่ระบบสำเร็จ",
       });
 
-      router.replace(redirectTo ?? "/onboarding");
+      router.replace(isSignup ? `/verify-email?next=${encodeURIComponent(redirectTo ?? "/onboarding")}` : redirectTo ?? "/onboarding");
     } catch {
       setStatus({ kind: "error", message: "ไม่สามารถเชื่อมต่อกับระบบได้" });
     } finally {

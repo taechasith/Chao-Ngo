@@ -24,7 +24,7 @@ vi.mock("./auth", () => ({
   getAuthReadinessForRuntime: () => ({ isReady: true }),
   getAuth: () => ({ api: { getSession: async ({ headers }: { headers: Headers }) => {
     const id = headers.get("x-test-user");
-    return id ? { user: { id } } : null;
+    return id ? { user: { id, emailVerified: true } } : null;
   } } }),
 }));
 

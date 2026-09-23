@@ -2,6 +2,7 @@ import { betterAuth } from "better-auth";
 import { env } from "cloudflare:workers";
 
 import { getAuthReadiness } from "./auth-config";
+import { sendPasswordResetEmail, sendVerificationEmail } from "./email";
 
 type AuthBindings = CloudflareEnv & {
   BETTER_AUTH_SECRET?: string;
@@ -28,15 +29,28 @@ export function getAuth() {
     baseURL: readiness.baseURL,
     database: bindings.DB,
     emailAndPassword: {
-      autoSignIn: true,
+      autoSignIn: false,
       enabled: true,
       maxPasswordLength: 128,
       minPasswordLength: 12,
+      requireEmailVerification: true,
       revokeSessionsOnPasswordReset: true,
+      sendResetPassword: async ({ user, url }) => {
+        await sendPasswordResetEmail({ email: user.email, url });
+      },
+    },
+    emailVerification: {
+      autoSignInAfterVerification: true,
+      sendOnSignIn: true,
+      sendOnSignUp: true,
+      sendVerificationEmail: async ({ user, url }) => {
+        await sendVerificationEmail({ email: user.email, url });
+      },
     },
     rateLimit: {
       customRules: {
         "/request-password-reset": { max: 3, window: 60 },
+        "/send-verification-email": { max: 3, window: 60 },
         "/sign-in/email": { max: 5, window: 60 },
         "/sign-up/email": { max: 5, window: 60 },
       },

@@ -47,6 +47,16 @@ async function getAuthenticatedUserId(request: Request): Promise<string | Respon
     );
   }
 
+  if (!session.user.emailVerified) {
+    return Response.json(
+      { code: "EMAIL_VERIFICATION_REQUIRED" },
+      {
+        headers: { "Cache-Control": "no-store" },
+        status: 403,
+      },
+    );
+  }
+
   return session.user.id;
 }
 

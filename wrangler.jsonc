@@ -38,6 +38,7 @@
   ]
 ,
 "vars": {
-  "BETTER_AUTH_URL": "https://chaongo.creativelabth.com"
+  "BETTER_AUTH_URL": "https://chaongo.creativelabth.com",
+  "RESEND_FROM_EMAIL": "Chao Ngo <noreply@creativelabth.com>"
 }
 }

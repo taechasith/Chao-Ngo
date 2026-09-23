@@ -47,7 +47,7 @@ export async function requireResearchParticipant(
   }
 
   const account = await env.DB.prepare(
-    `SELECT id FROM "user" WHERE id = ? AND research_deletion_pending_at IS NULL
+    `SELECT id FROM "user" WHERE id = ? AND emailVerified = 1 AND research_deletion_pending_at IS NULL
       AND (research_retention_expires_at IS NULL OR research_retention_expires_at > CURRENT_TIMESTAMP)`,
   ).bind(session.user.id).first();
   if (!account) return noStoreResponse({ code: "RESEARCH_DATA_EXPIRED" }, 403);
