@@ -128,7 +128,7 @@ function subgameName(subgameId: string): string {
   }
 
   if (subgameId === "subgame-ka-wa-ve" || subgameId === "subgame-ka-psychology" || subgameId === "subgame-ka-biotech") {
-    return "คดี WA VE · Bio x Psychology";
+    return "คดี WA VE · Bio";
   }
 
   if (subgameId === "subgame-node-zone-quantum") {

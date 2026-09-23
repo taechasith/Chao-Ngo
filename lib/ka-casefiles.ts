@@ -30,11 +30,11 @@ export const kaSubgames = {
     title: "คดี MAIMEE",
   },
   "wa-ve": {
-    academicField: "Bio x Psychology",
+    academicField: "Bio",
     id: "subgame-ka-wa-ve",
     route: "/play/ka-casefiles/wa-ve",
     slug: "wa-ve",
-    subtitle: "Bio x Psychology",
+    subtitle: "Bio",
     title: "คดี WA VE",
   },
 } as const;

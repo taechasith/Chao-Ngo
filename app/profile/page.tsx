@@ -48,7 +48,7 @@ function formatDate(value?: string | null) {
 
 function caseLabel(item: ProgressItem) {
   if (item.subgame_id === "subgame-ka-fintech" || item.subgame_slug === "maimee" || item.subgame_slug === "fintech") return "คดี MAIMEE · FinTech";
-  if (item.subgame_id === "subgame-ka-wa-ve" || item.subgame_slug === "wa-ve") return "คดี WA VE · Bio x Psychology";
+  if (item.subgame_id === "subgame-ka-wa-ve" || item.subgame_slug === "wa-ve") return "คดี WA VE · Bio";
   return item.subgame_slug === "quantum" ? "คดีควอนตัม" : item.subgame_slug === "space" ? "คดีอวกาศ" : item.subgame_title;
 }
 

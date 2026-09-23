@@ -93,7 +93,7 @@ const selectableCases: SubmissionCase[] = [
     eyebrow: "K.A. CASEFILES / NETLOOD CITY",
     id: "subgame-ka-wa-ve",
     route: "/play/ka-casefiles/wa-ve",
-    subtitle: "Bio x Psychology",
+    subtitle: "Bio",
     title: "คดี WA VE",
   },
 ];

@@ -59,7 +59,7 @@ const guideSteps: Record<string, GuideStep[]> = {
   ],
   "ka-casefiles": [
     { target: "ka-overview", title: "แฟ้ม NetLood City เปิดแล้ว", body: "เลือกคดีที่คุณอยากสำรวจก่อนได้ ทั้งสองคดีใช้แนวทางอ่านหลักฐานและการส่งคำอธิบายร่วมกัน" },
-    { target: "ka-case-selection", title: "เลือกหนึ่งคดีเพื่อเริ่ม", body: "MAIMEE เป็นคดี FinTech และ WA VE รวมบริบท Bio x Psychology ไว้ในคดีเดียว" },
+    { target: "ka-case-selection", title: "เลือกหนึ่งคดีเพื่อเริ่ม", body: "MAIMEE เป็นคดี FinTech และ WA VE เป็นคดี Bio ใน NetLood City" },
     { target: "help-control", title: "เรียกคำแนะนำได้เสมอ", body: "กด ช่วยเหลือ เพื่อย้อนกลับมาดูขั้นตอนของหน้าที่กำลังเปิดได้ทุกเมื่อ" },
   ],
   "ka-maimee": kaCaseGuideSteps,

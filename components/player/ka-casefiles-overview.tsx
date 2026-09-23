@@ -77,7 +77,7 @@ export function KaCasefilesOverview() {
             src="/ka-casefiles/personnel/tete-techametakun.png"
           />
           <div className="player-route-card-content">
-            <span className="player-eyebrow">NETLOOD CITY / BIO X PSYCHOLOGY</span>
+            <span className="player-eyebrow">NETLOOD CITY / BIO</span>
             <h2>{kaSubgames["wa-ve"].title}</h2>
             <p>สำรวจหลักฐานด้านมนุษย์ สุขภาพ และระบบชีวภาพในคดีเดียว โดยแยกสิ่งที่ยืนยันได้จากสิ่งที่ยังไม่รู้</p>
             <span className="player-case-status"><span aria-hidden="true" />{progressLabel(progressBySubgame.get(kaSubgames["wa-ve"].id))}</span>

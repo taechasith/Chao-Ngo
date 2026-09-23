@@ -281,7 +281,7 @@ main{position:relative;z-index:1;display:flex;flex-direction:column;gap:118px;pa
 .logos{row-gap:18px}
 .logos h2{grid-column:1/-1;color:var(--g1)}
 .logos .section-title{grid-column:1/8;color:var(--w1)}
-.logos .grid{grid-column:1/-1;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.logos .grid{grid-column:1/-1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
 .logos a,.logos .mind-card{min-height:162px;color:var(--w2);display:block;position:relative}
 .logos a::after{content:"";position:absolute;inset:0;border:1px solid rgba(230,230,230,.2);pointer-events:none;z-index:10}
 .logos .cell{position:relative;height:100%;display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;gap:18px;padding:18px}
@@ -743,14 +743,17 @@ body.machine #topnav,body.machine #layout{display:none}
     <h3 class="section-title f-h1 line-seed-sans" data-ps><strong>ตอนนี้คุณอยากสืบเรื่องไหน?</strong></h3>
     <div class="grid">
       <a class="mind-card" href="/play/node-zone/quantum" target="_top" aria-label="Open Quantum case">
-        <div class="cell with-dots"><div class="lines with-diagonal-lines"></div><span class="mind-no">01</span><h4 class="mind-title" data-ps>Quantum</h4></div>
+        <div class="cell with-dots"><div class="lines with-diagonal-lines"></div><h4 class="mind-title" data-ps>Quantum</h4></div>
       </a>
       <a class="mind-card" href="/play/node-zone/space" target="_top" aria-label="Open Space case">
-        <div class="cell with-dots"><div class="lines with-diagonal-lines"></div><span class="mind-no">02</span><h4 class="mind-title" data-ps>Space</h4></div>
+        <div class="cell with-dots"><div class="lines with-diagonal-lines"></div><h4 class="mind-title" data-ps>Space</h4></div>
       </a>
-      <div class="cell mind-card with-dots" aria-label="The K.A. Casefiles open"><div class="lines with-diagonal-lines"></div><span class="mind-no">03</span><h4 class="mind-title" data-ps>THE K.A. CASEFILES</h4><span class="mind-badge" data-ps>NetLood City</span></div>
-      <div class="cell mind-card with-dots" aria-label="MAIMEE playable"><div class="lines with-diagonal-lines"></div><span class="mind-no">04</span><h4 class="mind-title" data-ps>MAIMEE</h4><span class="mind-badge" data-ps>FinTech · Open</span></div>
-      <div class="cell mind-card with-dots" aria-label="WA VE playable"><div class="lines with-diagonal-lines"></div><span class="mind-no">05</span><h4 class="mind-title" data-ps>WA VE</h4><span class="mind-badge" data-ps>Bio x Psychology · Open</span></div>
+      <a class="mind-card" href="/play/ka-casefiles/wa-ve" target="_top" aria-label="Open Bio case">
+        <div class="cell with-dots"><div class="lines with-diagonal-lines"></div><h4 class="mind-title" data-ps>Bio</h4></div>
+      </a>
+      <a class="mind-card" href="/play/ka-casefiles/maimee" target="_top" aria-label="Open FinTech case">
+        <div class="cell with-dots"><div class="lines with-diagonal-lines"></div><h4 class="mind-title" data-ps>FinTech</h4></div>
+      </a>
     </div>
   </section>
 
@@ -775,7 +778,7 @@ body.machine #topnav,body.machine #layout{display:none}
           <p class="cats" data-ps>แฟ้มคดี 02 / เล่นได้แล้ว</p>
           <h3 class="f-h3" data-ps>The K.A. Casefiles</h3>
           <p class="desc f-p" data-ps>NetLood City เปิดสองคดีให้สำรวจผ่านหลักฐาน และให้คุณออกแบบวิธีลดความสูญเสียจากสิ่งที่พบ</p>
-          <div class="subjects f-p" data-ps><span>NetLood City</span><span>MAIMEE · FinTech</span><span>WA VE · Bio x Psychology</span></div>
+          <div class="subjects f-p" data-ps><span>NetLood City</span><span>MAIMEE · FinTech</span><span>WA VE · Bio</span></div>
           <a class="go f-p" href="/play/ka-casefiles" target="_top" data-ps><span>เปิด THE K.A. CASEFILES</span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m11.1075 14.2752 4.2763-4.29004-4.2625-4.2625h1.9112l4.2625 4.27625-4.2763 4.27629h-1.9112ZM2.5 10.8102V9.17391h13.8188v1.63629H2.5Z"/></svg></a>
         </div>
       </article>

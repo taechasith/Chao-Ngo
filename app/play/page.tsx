@@ -43,7 +43,7 @@ export default function PlayPage() {
             </div>
             <div className="player-locked-subjects">
               <span><b>01</b>คดี MAIMEE · FinTech</span>
-              <span><b>02</b>คดี WA VE · Bio x Psychology</span>
+              <span><b>02</b>คดี WA VE · Bio</span>
               <span className="player-case-status"><span aria-hidden="true" />พร้อมสำรวจ</span>
               <Link className="player-text-action" href="/play/ka-casefiles">เปิด THE K.A. CASEFILES →</Link>
             </div>
