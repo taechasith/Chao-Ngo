@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { gsap } from "gsap";
-import { FolderOpen, House, LogOut, Menu, Send, Settings, UserRound, X } from "lucide-react";
+import { FolderOpen, House, LogOut, Menu, NotebookPen, Play, Send, Settings, UserRound, X } from "lucide-react";
 
 import { AccountGate, type AccountStatus } from "./account-gate";
 import { AchievementToast } from "./achievement-toast";
@@ -23,6 +23,8 @@ type AppShellProps = {
 const primaryLinks = [
   { href: "/", label: "ภาพรวม", match: (path: string) => path === "/", icon: House },
   { href: "/play", label: "แฟ้มคดี", match: (path: string) => path.startsWith("/play"), icon: FolderOpen },
+  { href: "/onboarding", label: "งานวิจัย", match: (path: string) => path === "/onboarding", icon: NotebookPen },
+  { href: "/onboarding", label: "เริ่มเล่น", match: () => false, icon: Play },
 ];
 
 const utilityLinks = [
@@ -295,7 +297,6 @@ export function AppShell({ children, fullBleed = false, guideKey: providedGuideK
 
       {showGameplayTools ? <nav aria-label="เครื่องมือหลัก" className="player-corner-tools">
         <Link href="/profile">โปรไฟล์</Link>
-        <Link href="/settings">ตั้งค่า</Link>
         <Link href="/submit">ส่งคำตอบ</Link>
         <HelpButton guideKey={guideKey} pageTitle={pageTitle} />
       </nav> : null}

@@ -24,7 +24,7 @@ export default function SettingsPage() {
   const [autoGuide, setAutoGuide] = useState(true);
   const [showSaveStatus, setShowSaveStatus] = useState(true);
   const [motion, setMotion] = useState<MotionSetting>("system");
-  const [soundEffects, setSoundEffects] = useState(false);
+  const [soundEffects, setSoundEffects] = useState(true);
   const [musicEnabled, setMusicEnabled] = useState(true);
   const [musicVolume, setMusicVolume] = useState(0.55);
   const [textSize, setTextSize] = useState<"normal" | "large">("normal");
@@ -40,7 +40,7 @@ export default function SettingsPage() {
     } catch { /* Defaults remain available when storage is unavailable. */ }
     setAutoGuide(readBoolean("jao-ngoh-auto-guide", true));
     setShowSaveStatus(readBoolean("jao-ngoh-show-save-status", true));
-    setSoundEffects(readBoolean("jao-ngoh-sound-effects", false));
+    setSoundEffects(readBoolean("jao-ngoh-sound-effects", true));
     setMusicEnabled(readBoolean("jao-ngoh-music-enabled", true));
     try {
       const storedVolume = Number(window.localStorage.getItem("jao-ngoh-music-volume"));
@@ -48,13 +48,8 @@ export default function SettingsPage() {
     } catch { /* Defaults remain available when storage is unavailable. */ }
     void fetch("/api/player-settings", { cache: "no-store" })
       .then((response) => response.ok ? response.json() as Promise<PlayerSettings> : null)
-      .then((settings) => {
-        setPlayerSettings(settings);
-        try {
-          if (settings && window.localStorage.getItem("jao-ngoh-sound-effects") === null) setSoundEffects(settings.soundEffects);
-        } catch { /* The local opt-in default remains when storage is unavailable. */ }
-      })
-      .catch(() => setPlayerSettings({ music: { enabled: false, url: null }, soundEffects: false }));
+      .then((settings) => setPlayerSettings(settings))
+      .catch(() => setPlayerSettings({ music: { enabled: false, url: null }, soundEffects: true }));
   }, []);
 
   function changeMotion(value: MotionSetting) {

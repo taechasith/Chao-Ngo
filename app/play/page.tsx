@@ -4,10 +4,8 @@ import Link from "next/link";
 import { AppShell } from "../../components/player/app-shell";
 import { StatusBadge } from "../../components/player/panel";
 import { InvestigativeActionMarker } from "../../components/player/investigative-action";
-import { isPlayerGamePlayable } from "../../lib/server/content/player-evidence";
 
-export default async function PlayPage() {
-  const kaPlayable = await isPlayerGamePlayable("ka-casefiles");
+export default function PlayPage() {
   return (
     <AppShell pageTitle="แฟ้มคดี">
       <div className="player-case-index">
@@ -37,17 +35,17 @@ export default async function PlayPage() {
             </div>
           </Link>
 
-          <section aria-labelledby="ka-title" className={`player-locked-case${kaPlayable ? " player-locked-case--available" : ""}`}>
+          <section aria-labelledby="ka-title" className="player-locked-case player-locked-case--available">
             <div className="grid gap-4">
-              <span className="player-eyebrow">แฟ้มคดี 02 / {kaPlayable ? "เล่นได้แล้ว" : "รอการเผยแพร่"}</span>
+              <span className="player-eyebrow">แฟ้มคดี 02 / เล่นได้แล้ว</span>
               <h2 id="ka-title">The K.A. Casefiles</h2>
               <p>NetLood City เปิดแฟ้มคดีสองเส้นทางให้สำรวจผ่านหลักฐาน และให้คุณออกแบบวิธีลดความสูญเสียจากสิ่งที่พบ</p>
             </div>
             <div className="player-locked-subjects">
               <span><b>01</b>คดี MAIMEE · FinTech</span>
               <span><b>02</b>คดี WA VE · Bio</span>
-              <span className="player-case-status"><span aria-hidden="true" />{kaPlayable ? "พร้อมสำรวจ" : "ผู้ดูแลยังไม่เผยแพร่"}</span>
-              {kaPlayable ? <Link className="player-text-action" href="/play/ka-casefiles">เปิด THE K.A. CASEFILES →</Link> : <span className="text-sm text-white/55">แฟ้มนี้จะเปิดเมื่อหลักฐานพร้อมสำหรับการสำรวจ</span>}
+              <span className="player-case-status"><span aria-hidden="true" />พร้อมสำรวจ</span>
+              <Link className="player-text-action" href="/play/ka-casefiles">เปิด THE K.A. CASEFILES →</Link>
             </div>
           </section>
         </section>

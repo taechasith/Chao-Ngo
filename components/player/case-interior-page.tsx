@@ -4,7 +4,7 @@ import { CaseProgress } from "./case-progress";
 import { EvidenceDesk } from "./evidence-desk";
 import { GameSessionStarter } from "./game-session-starter";
 import { CasePanel, DecisionPanel, DossierPanel, EmptyState, EvidenceCell, PageIntro, PlayerShell, SystemStatus, UtilityStrip } from "./interior-system";
-import { getPlayerAssistantUrl, getPlayerTimeline } from "../../lib/server/content/player-evidence";
+import { getPlayerTimeline } from "../../lib/server/content/player-evidence";
 import { InvestigativeAction } from "./investigative-action";
 
 export type CaseInteriorPageProps = {
@@ -22,10 +22,7 @@ export type CaseInteriorPageProps = {
 };
 
 export async function CaseInteriorPage({ pageTitle, eyebrow, title, subtitle, description, meta, image, imageAlt, subgameId, timelineSlug, instructions }: CaseInteriorPageProps) {
-  const [nodes, assistantUrl] = await Promise.all([
-    getPlayerTimeline(),
-    getPlayerAssistantUrl("node-zone"),
-  ]);
+  const nodes = await getPlayerTimeline();
   const activeNode = nodes?.find((node) => node.slug === timelineSlug);
 
   return (
@@ -55,7 +52,7 @@ export async function CaseInteriorPage({ pageTitle, eyebrow, title, subtitle, de
           </aside>
         </section>
         <div className="quantum-evidence-anchor" id="evidence"><EvidenceDesk initialSlug={timelineSlug} nodes={nodes} /></div>
-        <DecisionPanel guideTarget="case-ai" action={<InvestigativeAction href={assistantUrl} intent="secondary" rel="noopener noreferrer" target="_blank">เปิด Gemini ↗</InvestigativeAction>} eyebrow="REQUIRED / AI คู่คิด / GEMINI" title="ก่อนส่งคำตอบ ต้องคุยกับ AI คู่คิด">
+        <DecisionPanel guideTarget="case-ai" action={<InvestigativeAction href="https://gemini.google.com/gem/45cb7e3f0314" intent="secondary" rel="noopener noreferrer" target="_blank">เปิด Gemini ↗</InvestigativeAction>} eyebrow="REQUIRED / AI คู่คิด / GEMINI" title="ก่อนส่งคำตอบ ต้องคุยกับ AI คู่คิด">
           <p>ใช้ Gemini เพื่อถาม อธิบายแนวคิด และทดสอบคำอธิบายของคุณ จากนั้นบันทึกบทสนทนาเป็น PDF เพื่อแนบตอนส่งคำตอบ</p>
           <p>AI อาจตอบผิดได้ ตรวจคำตอบกับหลักฐานในแฟ้มคดีเสมอ คำตอบสุดท้ายยังเป็นของคุณ</p>
         </DecisionPanel>

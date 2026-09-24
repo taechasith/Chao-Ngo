@@ -4,7 +4,7 @@ import Link from "next/link";
 import { AppShell } from "../../../components/player/app-shell";
 import { StatusBadge } from "../../../components/player/panel";
 import { EvidenceDesk } from "../../../components/player/evidence-desk";
-import { getPlayerAssistantUrl, getPlayerTimeline } from "../../../lib/server/content/player-evidence";
+import { getPlayerTimeline } from "../../../lib/server/content/player-evidence";
 import { InvestigativeAction, InvestigativeActionMarker } from "../../../components/player/investigative-action";
 
 const cases = [
@@ -27,10 +27,7 @@ const cases = [
 ];
 
 export default async function NodeZonePage() {
-  const [nodes, assistantUrl] = await Promise.all([
-    getPlayerTimeline(),
-    getPlayerAssistantUrl("node-zone"),
-  ]);
+  const nodes = await getPlayerTimeline();
   return (
     <AppShell pageTitle="NODE ZONE">
       <div className="player-content">
@@ -63,7 +60,7 @@ export default async function NodeZonePage() {
             <h2 className="mt-2">ใช้ AI คู่คิดก่อนส่งคำตอบ</h2>
             <p>เปิด Gemini เพื่อทดสอบคำอธิบายของคุณ แล้วบันทึกบทสนทนาเป็น PDF สำหรับขั้นตอนส่งคำตอบ</p>
           </div>
-          <InvestigativeAction href={assistantUrl} rel="noopener noreferrer" target="_blank">เปิด Gemini ↗</InvestigativeAction>
+          <InvestigativeAction href="https://gemini.google.com/gem/45cb7e3f0314" rel="noopener noreferrer" target="_blank">เปิด Gemini ↗</InvestigativeAction>
         </section>
         <div data-guide="node-zone-submit"><InvestigativeAction href="/submit">ส่งคำตอบเมื่อพร้อม</InvestigativeAction></div>
       </div>

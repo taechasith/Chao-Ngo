@@ -3,7 +3,7 @@ import Link from "next/link";
 
 import { AppShell } from "./app-shell";
 import { StatusBadge } from "./panel";
-import { getPlayerAssistantUrl, getPlayerTimeline } from "../../lib/server/content/player-evidence";
+import { getPlayerTimeline } from "../../lib/server/content/player-evidence";
 import { EvidenceDesk } from "./evidence-desk";
 import { CaseProgress } from "./case-progress";
 
@@ -26,10 +26,7 @@ export async function CaseIntroduction({
   subtitle: string;
   title: string;
 }) {
-  const [nodes, assistantUrl] = await Promise.all([
-    getPlayerTimeline(),
-    getPlayerAssistantUrl("node-zone"),
-  ]);
+  const nodes = await getPlayerTimeline();
   return (
     <AppShell pageTitle={pageTitle}>
       <div className="player-content">
@@ -88,7 +85,7 @@ export async function CaseIntroduction({
             <p>ใช้ Gemini เพื่อถาม อธิบายแนวคิด และทดสอบคำอธิบายของคุณ จากนั้นบันทึกบทสนทนาเป็น PDF เพื่อแนบตอนส่งคำตอบ</p>
             <p>AI อาจตอบผิดได้ ตรวจคำตอบกับหลักฐานในแฟ้มคดีเสมอ คำตอบสุดท้ายยังเป็นของคุณ</p>
           </div>
-          <a className="player-button player-button--primary" href={assistantUrl} rel="noopener noreferrer" target="_blank">เปิด Gemini แล้วกลับมาแนบ PDF</a>
+          <a className="player-button player-button--primary" href="https://gemini.google.com/gem/45cb7e3f0314" rel="noopener noreferrer" target="_blank">เปิด Gemini แล้วกลับมาแนบ PDF</a>
         </section>
       </div>
     </AppShell>

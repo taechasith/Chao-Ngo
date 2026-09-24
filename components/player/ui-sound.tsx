@@ -5,8 +5,8 @@ import { useEffect } from "react";
 export function UiSound() {
   useEffect(() => {
     const onClick = (event: MouseEvent) => {
-      let enabled = false;
-      try { enabled = window.localStorage.getItem("jao-ngoh-sound-effects") === "true"; } catch { /* Sound stays opt-in when storage is unavailable. */ }
+      let enabled = true;
+      try { enabled = window.localStorage.getItem("jao-ngoh-sound-effects") !== "false"; } catch { /* Use the default when storage is unavailable. */ }
       if (!enabled || !(event.target instanceof Element) || !event.target.closest("button, a, input, select")) return;
       const AudioContextConstructor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!AudioContextConstructor) return;

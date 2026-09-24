@@ -1,7 +1,7 @@
 import Link from "next/link";
 
-import { kaGame, kaNodeLabels, kaSubmissionGuide, kaSubgames, type KaSubgameSlug } from "../../lib/ka-casefiles";
-import { getPlayerAssistantUrl, getPlayerTimeline, isPlayerGamePlayable, type PlayerTimelineNode } from "../../lib/server/content/player-evidence";
+import { kaGame, kaNodeLabels, kaSubmissionGuide, kaSubgames, kaTimelineNodes, type KaSubgameSlug } from "../../lib/ka-casefiles";
+import { getPlayerTimeline, type PlayerTimelineNode } from "../../lib/server/content/player-evidence";
 import { CaseProgress } from "./case-progress";
 import { EvidenceDesk } from "./evidence-desk";
 import { GameSessionStarter } from "./game-session-starter";
@@ -28,28 +28,17 @@ export async function KaCaseInteriorPage({
   pageTitle,
 }: KaCaseInteriorPageProps) {
   const subgame = kaSubgames[caseSlug];
-  const playable = await isPlayerGamePlayable(kaGame.slug);
-  if (!playable) {
-    return <PlayerShell pageTitle={pageTitle}>
-      <div className="player-content player-case-index">
-        <PageIntro description="แฟ้มคดีนี้ยังไม่ได้รับการเผยแพร่โดยผู้ดูแลระบบ จึงยังไม่มีหลักฐานให้เปิดอ่าน" eyebrow="NETLOOD CITY / UNAVAILABLE" meta="กลับไปเลือกแฟ้มอื่นที่เผยแพร่แล้ว" title="แฟ้มคดียังไม่พร้อม" />
-        <Link className="player-button" href="/play">กลับสู่แฟ้มคดี</Link>
-      </div>
-    </PlayerShell>;
-  }
-  const [publishedTimeline, assistantUrl] = await Promise.all([
-    getPlayerTimeline({
-      gameSlug: kaGame.slug,
-      r2KeyPrefix: "games/ka-casefiles/",
-    }),
-    getPlayerAssistantUrl(kaGame.slug),
-  ]);
+  const fallbackNodes: PlayerTimelineNode[] = kaTimelineNodes[caseSlug];
+  const publishedTimeline = await getPlayerTimeline({
+    gameSlug: kaGame.slug,
+    r2KeyPrefix: "games/ka-casefiles/",
+  });
   const publishedNodes = publishedTimeline?.filter((node) =>
     node.slug === "netlood-city" || node.slug === "personnel" || node.slug === caseSlug,
   );
-  const nodes: PlayerTimelineNode[] = publishedNodes?.some((node) => node.slug === caseSlug && node.files.length > 0)
+  const nodes = publishedNodes?.some((node) => node.slug === caseSlug && node.files.length > 0)
     ? publishedNodes
-    : [];
+    : fallbackNodes;
   const activeNode = nodes.find((node) => node.slug === caseSlug);
 
   return (
@@ -92,11 +81,6 @@ export async function KaCaseInteriorPage({
         <div className="quantum-evidence-anchor" id="evidence">
           <EvidenceDesk gameTitle={kaGame.title} guideScope="ka-case" initialSlug={caseSlug} nodeLabels={kaNodeLabels} nodes={nodes} subgameId={subgame.id} />
         </div>
-
-        <DecisionPanel guideTarget="ka-ai" action={<InvestigativeAction href={assistantUrl} intent="secondary" rel="noopener noreferrer" target="_blank">เปิด Gemini ↗</InvestigativeAction>} eyebrow="REQUIRED / AI คู่คิด / GEMINI" title="ก่อนส่งคำตอบ ต้องคุยกับ AI คู่คิด">
-          <p>ใช้ AI เพื่อตั้งคำถาม เปรียบเทียบคำอธิบายกับหลักฐาน และบันทึกบทสนทนาเป็น PDF ตามเงื่อนไขการส่งคำตอบ</p>
-          <p>AI เป็นคู่คิด ไม่ใช่ผู้เฉลย คำตอบสุดท้ายยังเป็นของคุณ</p>
-        </DecisionPanel>
 
         <DecisionPanel guideTarget="ka-submit" action={<InvestigativeAction href={`/submit?subgameId=${subgame.id}`}>เปิดภารกิจส่งคำตอบ</InvestigativeAction>} eyebrow="SUBMISSION / NETLOOD CITY" title={kaSubmissionGuide.title}>
           <p>ส่งได้เป็นข้อความในระบบหรือไฟล์หนึ่งชิ้น โดยใช้แบบจำลองเชิงสาเหตุ หลักฐานอย่างน้อยสามชิ้น และแนวคิดเทคโนโลยีหรือระบบที่อาจช่วยลดความสูญเสียได้</p>

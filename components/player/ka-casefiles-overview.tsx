@@ -19,7 +19,7 @@ function progressLabel(status?: string): string {
   return "พร้อมเริ่มสำรวจ";
 }
 
-export function KaCasefilesOverview({ playable }: { playable: boolean }) {
+export function KaCasefilesOverview() {
   const [progress, setProgress] = useState<ProgressRow[]>([]);
 
   useEffect(() => {
@@ -37,16 +37,6 @@ export function KaCasefilesOverview({ playable }: { playable: boolean }) {
     () => new Map(progress.map((entry) => [entry.subgame_id, entry.status])),
     [progress],
   );
-
-  if (!playable) {
-    return <div className="player-content player-case-index">
-      <header className="player-page-heading" data-player-reveal="heading">
-        <StatusBadge>CASE FILE 02 / UNAVAILABLE</StatusBadge>
-        <h1>THE K.A. CASEFILES ยังไม่เปิดแฟ้ม</h1>
-        <p>แฟ้มนี้จะปรากฏเมื่อผู้ดูแลเผยแพร่เนื้อหาและหลักฐานให้ผู้เล่นสำรวจได้ครบถ้วน</p>
-      </header>
-    </div>;
-  }
 
   return (
     <div className="player-content player-case-index">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Download, ExternalLink, FileText, Image as ImageIcon, Minus, Plus, RotateCcw, Volume2, X } from "lucide-react";
 import { gsap } from "gsap";
 import type { PlayerEvidence, PlayerTimelineNode } from "../../lib/server/content/player-evidence";
@@ -164,42 +164,6 @@ function EvidenceContent({ file }: { file: PlayerEvidence }) {
   const [text, setText] = useState<string | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const imageViewportRef = useRef<HTMLDivElement>(null);
-  const dragStartRef = useRef<{ left: number; top: number; x: number; y: number } | null>(null);
-
-  function resetImageView() {
-    setZoom(1);
-    const viewport = imageViewportRef.current;
-    if (viewport) {
-      viewport.scrollLeft = 0;
-      viewport.scrollTop = 0;
-    }
-  }
-
-  function beginImagePan(event: ReactPointerEvent<HTMLDivElement>) {
-    const viewport = imageViewportRef.current;
-    if (!viewport || zoom <= 1) return;
-    dragStartRef.current = { left: viewport.scrollLeft, top: viewport.scrollTop, x: event.clientX, y: event.clientY };
-    viewport.setPointerCapture(event.pointerId);
-    viewport.dataset.panning = "true";
-  }
-
-  function moveImagePan(event: ReactPointerEvent<HTMLDivElement>) {
-    const viewport = imageViewportRef.current;
-    const start = dragStartRef.current;
-    if (!viewport || !start) return;
-    viewport.scrollLeft = start.left - (event.clientX - start.x);
-    viewport.scrollTop = start.top - (event.clientY - start.y);
-  }
-
-  function endImagePan(event: ReactPointerEvent<HTMLDivElement>) {
-    const viewport = imageViewportRef.current;
-    dragStartRef.current = null;
-    if (viewport) {
-      viewport.dataset.panning = "false";
-      if (viewport.hasPointerCapture(event.pointerId)) viewport.releasePointerCapture(event.pointerId);
-    }
-  }
 
   useEffect(() => {
     if (!file.url || (file.kind !== "text" && file.kind !== "pdf")) return;
@@ -234,10 +198,9 @@ function EvidenceContent({ file }: { file: PlayerEvidence }) {
         <button aria-label="ย่อภาพ" disabled={zoom <= 1} onClick={() => setZoom((value) => Math.max(1, value - 0.5))} title="ย่อภาพ" type="button"><Minus aria-hidden="true" size={18} /></button>
         <output aria-live="polite">{Math.round(zoom * 100)}%</output>
         <button aria-label="ขยายภาพ" disabled={zoom >= 3} onClick={() => setZoom((value) => Math.min(3, value + 0.5))} title="ขยายภาพ" type="button"><Plus aria-hidden="true" size={18} /></button>
-        <button aria-label="คืนขนาดและตำแหน่งภาพ" onClick={resetImageView} title="คืนขนาดและตำแหน่งภาพ" type="button"><RotateCcw aria-hidden="true" size={16} /></button>
+        <button aria-label="คืนขนาดภาพ" onClick={() => setZoom(1)} title="คืนขนาดภาพ" type="button"><RotateCcw aria-hidden="true" size={16} /></button>
       </div>
-      <p className="player-image-pan-hint" id="image-pan-help">ขยายแล้วลากภาพเพื่อเลื่อนดูรายละเอียด หรือใช้ปุ่มลูกศร/การเลื่อนของอุปกรณ์</p>
-      <div aria-describedby="image-pan-help" aria-label="ภาพหลักฐาน" className="player-image-scroll" data-panning="false" onPointerCancel={endImagePan} onPointerDown={beginImagePan} onPointerMove={moveImagePan} onPointerUp={endImagePan} ref={imageViewportRef} tabIndex={0}>
+      <div aria-label="ภาพหลักฐาน" className="player-image-scroll" tabIndex={0}>
         {/* Evidence retains its original colors and proportions. */}
         <img alt={file.title} onError={() => setError(true)} src={file.url} style={{ width: `${zoom * 100}%` }} />
       </div>
