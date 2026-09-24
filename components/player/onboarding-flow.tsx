@@ -399,7 +399,7 @@ export function OnboardingFlow() {
               <p>คุณยังเปิดแฟ้มคดีที่เผยแพร่ได้ตามปกติ แต่ระบบยังไม่เปิดรับคำตอบ แบบสอบถาม และไฟล์บทสนทนา AI สำหรับงานวิจัย</p>
             </div>
             <p>คุณยังสามารถดูแฟ้มคดีที่เปิดให้สำรวจได้ โดยระบบจะไม่ส่งหรือบันทึกคำตอบวิจัยก่อนหน้านั้น</p>
-            <Link className="player-button w-full" href="/play">กลับไปที่แฟ้มคดี</Link>
+            <Link className="player-button w-full" href="/play">ดูแฟ้มคดีที่เปิดให้สำรวจ</Link>
           </aside>
         </div>
       </div>

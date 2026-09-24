@@ -5,6 +5,7 @@ import {
   contentTypeForExtension,
   r2KeyForNodeZoneAsset,
 } from "./node-zone";
+import { defaultPlayerAssistantUrl, safePlayerAssistantUrl } from "./player-evidence";
 
 const checksum = "a".repeat(64);
 
@@ -28,5 +29,12 @@ describe("NODE ZONE content helpers", () => {
     expect(contentTypeForExtension("png")).toBe("image/png");
     expect(contentTypeForExtension("py")).toBe("text/x-python; charset=utf-8");
     expect(contentTypeForExtension("mp3")).toBe("audio/mpeg");
+  });
+
+  it("accepts only safe admin-authored assistant URLs", () => {
+    expect(safePlayerAssistantUrl("https://assistant.example.test/gem")).toBe("https://assistant.example.test/gem");
+    expect(safePlayerAssistantUrl("http://assistant.example.test/gem")).toBe(defaultPlayerAssistantUrl);
+    expect(safePlayerAssistantUrl("https://user:pass@assistant.example.test/gem")).toBe(defaultPlayerAssistantUrl);
+    expect(safePlayerAssistantUrl("not-a-url")).toBe(defaultPlayerAssistantUrl);
   });
 });

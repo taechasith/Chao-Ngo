@@ -31,7 +31,7 @@ export async function GET(): Promise<Response> {
       url: musicUrl,
     },
     soundEffects: values.player_sound_effects_enabled === undefined
-      ? true
+      ? false
       : enabled(values.player_sound_effects_enabled),
   }, { headers: { "Cache-Control": "no-store" } });
 }

@@ -19,6 +19,46 @@ export type PlayerTimelineOptions = {
   r2KeyPrefix?: string;
 };
 
+export const defaultPlayerAssistantUrl = "https://gemini.google.com/gem/45cb7e3f0314";
+
+/** Keep admin-authored assistant links external, HTTPS-only, and free of credentials. */
+export function safePlayerAssistantUrl(value: string | null | undefined): string {
+  if (!value) return defaultPlayerAssistantUrl;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.username || url.password) return defaultPlayerAssistantUrl;
+    return url.href;
+  } catch {
+    return defaultPlayerAssistantUrl;
+  }
+}
+
+/** The admin-published games row is the source of truth for the assistant target. */
+export async function getPlayerAssistantUrl(gameSlug: string): Promise<string> {
+  if (!gameSlugPattern.test(gameSlug)) return defaultPlayerAssistantUrl;
+  try {
+    const game = await env.DB.prepare("SELECT assistant_url FROM games WHERE slug = ? LIMIT 1")
+      .bind(gameSlug)
+      .first<{ assistant_url: string | null }>();
+    return safePlayerAssistantUrl(game?.assistant_url);
+  } catch {
+    return defaultPlayerAssistantUrl;
+  }
+}
+
+/** The player never decides publication locally; D1 remains the authority. */
+export async function isPlayerGamePlayable(gameSlug: string): Promise<boolean> {
+  if (!gameSlugPattern.test(gameSlug)) return false;
+  try {
+    const game = await env.DB.prepare("SELECT status FROM games WHERE slug = ? LIMIT 1")
+      .bind(gameSlug)
+      .first<{ status: string }>();
+    return game?.status === "playable";
+  } catch {
+    return false;
+  }
+}
+
 type EvidenceRow = {
   node_id: string;
   slug: string;

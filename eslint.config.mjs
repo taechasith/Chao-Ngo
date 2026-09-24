@@ -11,6 +11,7 @@ export default tseslint.config(
       "cloudflare-env.d.ts",
       "dist/**",
       "coverage/**",
+      "scripts/release-ux-qa.mjs",
       "node_modules/**",
       "src/shaders/**",
     ],

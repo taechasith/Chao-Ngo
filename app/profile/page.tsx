@@ -78,11 +78,20 @@ export default function ProfilePage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    void Promise.all([
-      fetch("/api/player-progress", { credentials: "same-origin", signal: controller.signal }),
-      fetch("/api/player-notifications", { credentials: "same-origin", signal: controller.signal }),
-      fetch("/api/auth/get-session", { credentials: "same-origin", signal: controller.signal }),
-    ]).then(async ([progressResponse, notificationsResponse, sessionResponse]) => {
+    void (async () => {
+      const accessResponse = await fetch("/api/player-session", { credentials: "same-origin", signal: controller.signal });
+      const access = accessResponse.ok ? await accessResponse.json() as { state?: string } : null;
+      if (access?.state !== "signed-in") {
+        if (!controller.signal.aborted) setLoadingMessage(access?.state === "unavailable"
+          ? "พื้นที่ข้อมูลผู้เล่นยังไม่พร้อมใช้งาน"
+          : "เข้าสู่ระบบเพื่อเปิดแฟ้มความคืบหน้าของคุณ");
+        return;
+      }
+      const [progressResponse, notificationsResponse, sessionResponse] = await Promise.all([
+        fetch("/api/player-progress", { credentials: "same-origin", signal: controller.signal }),
+        fetch("/api/player-notifications", { credentials: "same-origin", signal: controller.signal }),
+        fetch("/api/auth/get-session", { credentials: "same-origin", signal: controller.signal }),
+      ]);
       const progressBody = await progressResponse.json() as Omit<ProfileData, "notifications" | "user"> & { code?: string };
       if (!progressResponse.ok) throw new Error(progressBody.code ?? "PROFILE_UNAVAILABLE");
       const notificationsBody = notificationsResponse.ok ? await notificationsResponse.json() as { notifications?: ProfileData["notifications"] } : {};
@@ -92,7 +101,7 @@ export default function ProfilePage() {
       setData(nextData);
       setName(nextData.user.name);
       setLoadingMessage("");
-    }).catch((error: unknown) => {
+    })().catch((error: unknown) => {
       if (!controller.signal.aborted) setLoadingMessage(error instanceof Error && error.message === "RESEARCH_CONSENT_REQUIRED" ? "ยืนยัน Consent ก่อนจึงจะดูสถานะการวิจัยได้" : "ยังเปิดข้อมูลโปรไฟล์ไม่ได้ ลองใหม่อีกครั้ง");
     });
     return () => controller.abort();

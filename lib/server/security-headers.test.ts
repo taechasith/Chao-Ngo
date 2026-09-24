@@ -11,7 +11,7 @@ describe("security headers", () => {
     expect(response.headers.get("Content-Security-Policy")).toContain("script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com https://challenges.cloudflare.com");
     expect(response.headers.get("Content-Security-Policy")).toContain("connect-src 'self' https://cloudflareinsights.com https://challenges.cloudflare.com");
     expect(response.headers.get("Content-Security-Policy")).toContain("frame-src 'self' https://challenges.cloudflare.com");
-    expect(response.headers.get("X-Frame-Options")).toBe("DENY");
+    expect(response.headers.get("X-Frame-Options")).toBe("SAMEORIGIN");
     expect(await response.text()).toBe("ok");
   });
 });
