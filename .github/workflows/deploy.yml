@@ -55,19 +55,15 @@ jobs:
 
           echo "Cloudflare credentials target the configured production account."
 
-      - name: Configure Turnstile runtime secret
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: c24fed68f8dc59cc339bd821d215bba8
-          TURNSTILE_SECRET_KEY: ${{ secrets.TURNSTILE_SECRET_KEY }}
+      - name: Verify Turnstile site key
         run: |
           set -euo pipefail
-          if [ -z "${TURNSTILE_SECRET_KEY:-}" ]; then
-            echo "TURNSTILE_SECRET_KEY is not configured in GitHub Actions secrets."
+          if [ -z "${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}" ]; then
+            echo "NEXT_PUBLIC_TURNSTILE_SITE_KEY is not configured."
             exit 1
           fi
-
-          printf '%s' "$TURNSTILE_SECRET_KEY" | npx wrangler secret put TURNSTILE_SECRET_KEY
+        env:
+          NEXT_PUBLIC_TURNSTILE_SITE_KEY: 0x4AAAAAAFAv4gMFljB7eBAU
 
       - name: Configure Resend runtime secret
         env:
@@ -88,4 +84,4 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: c24fed68f8dc59cc339bd821d215bba8
-          NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ secrets.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}
+          NEXT_PUBLIC_TURNSTILE_SITE_KEY: 0x4AAAAAAFAv4gMFljB7eBAU
