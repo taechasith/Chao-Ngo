@@ -2,6 +2,7 @@ const turnstileSiteVerifyUrl = "https://challenges.cloudflare.com/turnstile/v0/s
 
 type TurnstileResponse = {
   action?: unknown;
+  hostname?: unknown;
   success?: unknown;
 };
 
@@ -12,12 +13,13 @@ export type TurnstileVerification =
 
 type VerifyTurnstileInput = {
   expectedAction?: string;
+  expectedHostname?: string;
   remoteIp?: string;
   secret?: string;
   token?: string;
 };
 
-export async function verifyTurnstileToken({ expectedAction, remoteIp, secret, token }: VerifyTurnstileInput): Promise<TurnstileVerification> {
+export async function verifyTurnstileToken({ expectedAction, expectedHostname, remoteIp, secret, token }: VerifyTurnstileInput): Promise<TurnstileVerification> {
   const normalizedSecret = secret?.trim();
 
   if (!normalizedSecret) {
@@ -52,7 +54,8 @@ export async function verifyTurnstileToken({ expectedAction, remoteIp, secret, t
 
     const result = await response.json() as TurnstileResponse;
     const actionMatches = !expectedAction?.trim() || result.action === expectedAction.trim();
-    return result.success === true && actionMatches
+    const hostnameMatches = !expectedHostname?.trim() || result.hostname === expectedHostname.trim();
+    return result.success === true && actionMatches && hostnameMatches
       ? { configured: true, ok: true }
       : { configured: true, ok: false, reason: "invalid" };
   } catch {

@@ -90,11 +90,18 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     const uploadId = crypto.randomUUID();
     const originalName = safePdfFilename(formFile.name);
     const key = privateUploadKeyFor({ submissionId, uploadId, userId: participant.userId });
+    const checksum = await digestHex(bytes);
 
     try {
       await bucket.put(key, bytes, {
         httpMetadata: { cacheControl: "private, no-store", contentType: "application/pdf" },
+        customMetadata: { checksum, uploadedBy: participant.userId },
       });
+      const stored = await bucket.head(key);
+      if (!stored || stored.size !== bytes.byteLength || stored.customMetadata?.checksum !== checksum) {
+        await bucket.delete(key);
+        return response({ code: "PRIVATE_STORAGE_INTEGRITY_FAILED" }, 503);
+      }
     } catch {
       return response({ code: "PRIVATE_STORAGE_UNAVAILABLE" }, 503);
     }
@@ -120,7 +127,7 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
         `${uploadId}.pdf`,
         bytes.byteLength,
         formFile.type.slice(0, 100) || "application/pdf",
-        await digestHex(bytes),
+        checksum,
         submissionId, participant.userId,
         submissionId, participant.userId, aiChatUploadConsentVersion,
         participant.userId, participant.consentVersion,
@@ -166,11 +173,18 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     uploadId,
     userId: participant.userId,
   });
+  const checksum = await digestHex(bytes);
 
   try {
     await bucket.put(key, bytes, {
       httpMetadata: { cacheControl: "private, no-store", contentType: validation.detectedMime },
+      customMetadata: { checksum, uploadedBy: participant.userId },
     });
+    const stored = await bucket.head(key);
+    if (!stored || stored.size !== bytes.byteLength || stored.customMetadata?.checksum !== checksum) {
+      await bucket.delete(key);
+      return response({ code: "PRIVATE_STORAGE_INTEGRITY_FAILED" }, 503);
+    }
   } catch {
     return response({ code: "PRIVATE_STORAGE_UNAVAILABLE" }, 503);
   }
@@ -195,7 +209,7 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
       bytes.byteLength,
       formFile.type.slice(0, 100) || validation.detectedMime,
       validation.detectedMime,
-      await digestHex(bytes),
+      checksum,
       submissionId, participant.userId,
       participant.userId, participant.consentVersion,
       submissionId,

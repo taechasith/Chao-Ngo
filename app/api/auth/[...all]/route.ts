@@ -25,6 +25,7 @@ async function authHandler(request: Request): Promise<Response> {
     const body = await request.clone().json().catch(() => null) as { turnstileToken?: unknown } | null;
     const verification = await verifyTurnstileToken({
       expectedAction: pathname.endsWith("/sign-up/email") ? "signup" : "login",
+      expectedHostname: new URL(request.url).hostname,
       remoteIp: request.headers.get("cf-connecting-ip") ?? undefined,
       secret: turnstileSecret,
       token: typeof body?.turnstileToken === "string" ? body.turnstileToken : undefined,

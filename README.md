@@ -28,7 +28,7 @@ Remote verification on 2026-09-24 confirmed:
 - `The K.A. Casefiles`: playable
 - `MAIMEE`: FinTech, playable
 - `WA VE`: Bio, playable
-- research collection: intentionally `false`
+- research collection: enabled after policy approval (`true`)
 - research retention: 3 years
 
 Do not replace the D1 ID with the older ID shown in historical guides. The current shared player/admin database is the `420393d7-...` database above.
@@ -115,13 +115,13 @@ The player reads publication state from D1. Do not hard-code playable/locked dec
 
 ## Research collection gate
 
-The production flag is currently disabled:
+The production flag is currently enabled after the approved policy decision:
 
 ```sql
 SELECT value FROM app_metadata WHERE key = 'research_collection_enabled';
 ```
 
-Keep it disabled until the study owner has approved the Thai consent wording, minimum-age/minor policy, retention/deletion policy, withdrawal process, external-AI disclosure, and PDF-upload requirement. The player must show a transparent closed state and a useful route back to published case files.
+The approved production policy uses the Thai consent wording, an 18+ minimum age, three-year retention, an explicit withdrawal process, external-AI disclosure, and a required AI-chat PDF upload. Any policy change must be reviewed before changing the flag. If the study is paused, set the value back to `false`; the player must show a transparent closed state and a useful route back to published case files.
 
 When enabled, the server still requires current consent, verified email, retention eligibility, and participant ownership for research endpoints.
 
