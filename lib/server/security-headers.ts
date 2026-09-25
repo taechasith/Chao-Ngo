@@ -4,7 +4,7 @@ export function withSecurityHeaders(response: Response, request: Request): Respo
   const scriptSource = isLocalDevelopment ? "'self' 'unsafe-inline' 'unsafe-eval'" : "'self' 'unsafe-inline'";
   headers.set(
     "Content-Security-Policy",
-    `default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src ${scriptSource} https://static.cloudflareinsights.com https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://cdn.creativelabth.com; media-src 'self' blob: https://cdn.creativelabth.com; connect-src 'self' https://cloudflareinsights.com https://challenges.cloudflare.com; frame-src 'self' https://challenges.cloudflare.com`,
+    `default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src ${scriptSource} https://static.cloudflareinsights.com https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://cdn.creativelabth.com; media-src 'self' blob: https://cdn.creativelabth.com; connect-src 'self' blob: https://cdn.creativelabth.com https://cloudflareinsights.com https://challenges.cloudflare.com; frame-src 'self' blob: https://challenges.cloudflare.com`,
   );
   headers.set("Permissions-Policy", "camera=(), geolocation=(), microphone=(), payment=(), usb=()");
   headers.set("Referrer-Policy", "strict-origin-when-cross-origin");

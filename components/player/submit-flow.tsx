@@ -61,6 +61,7 @@ type UploadResponse = {
 type SubmissionCase = {
   id: string;
   eyebrow: string;
+  image?: string;
   route: string;
   subtitle: string;
   title: string;
@@ -71,6 +72,7 @@ const selectableCases: SubmissionCase[] = [
   {
     eyebrow: "NODE ZONE / CASE",
     id: "subgame-node-zone-quantum",
+    image: "/node-zone-hero/quantum/AIenhance_CCTV.png",
     route: "/play/node-zone/quantum",
     subtitle: "THE CORRECT TRAJECTORY",
     title: "คดีควอนตัม",
@@ -78,6 +80,7 @@ const selectableCases: SubmissionCase[] = [
   {
     eyebrow: "NODE ZONE / CASE",
     id: "subgame-node-zone-space",
+    image: "/node-zone-hero/space/AIenhance_CCTV.png",
     route: "/play/node-zone/space",
     subtitle: "THIRTEEN DAYS IN UTOPIA",
     title: "คดีอวกาศ",
@@ -85,6 +88,7 @@ const selectableCases: SubmissionCase[] = [
   {
     eyebrow: "K.A. CASEFILES / NETLOOD CITY",
     id: "subgame-ka-fintech",
+    image: "/ka-casefiles/maimee/scene-01.png",
     route: "/play/ka-casefiles/maimee",
     subtitle: "FinTech",
     title: "คดี MAIMEE",
@@ -92,6 +96,7 @@ const selectableCases: SubmissionCase[] = [
   {
     eyebrow: "K.A. CASEFILES / NETLOOD CITY",
     id: "subgame-ka-wa-ve",
+    image: "/ka-casefiles/personnel/tete-techametakun.png",
     route: "/play/ka-casefiles/wa-ve",
     subtitle: "Bio",
     title: "คดี WA VE",
@@ -150,6 +155,32 @@ function attachmentAccept(extensions: string[]): string {
 function uploadName(upload: UploadSummary | SelectedFile | null | undefined): string {
   if (!upload) return "";
   return "original_name" in upload ? upload.original_name : upload.name;
+}
+
+function hasAnswer(value: unknown): boolean {
+  if (typeof value === "string") return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  return value !== null && value !== undefined;
+}
+
+function SubmissionStageRail({ stages }: { stages: { href: string; label: string }[] }) {
+  const [activeStage, setActiveStage] = useState(stages[0]?.href ?? "");
+  const stageIds = stages.map((stage) => stage.href.slice(1)).join("|");
+
+  useEffect(() => {
+    const sections = stageIds.split("|").map((id) => document.getElementById(id)).filter((section): section is HTMLElement => Boolean(section));
+    if (!sections.length) return;
+    const observer = new IntersectionObserver(() => {
+      const current = [...sections].reverse().find((section) => section.getBoundingClientRect().top <= window.innerHeight * 0.38);
+      setActiveStage(`#${current?.id ?? sections[0].id}`);
+    }, { rootMargin: "-12% 0px -58% 0px" });
+    sections.forEach((section) => observer.observe(section));
+    return () => observer.disconnect();
+  }, [stageIds]);
+
+  return <nav aria-label="ส่วนของแฟ้มส่งคำตอบ" className="player-form-stages">
+    {stages.map((stage, index) => <a aria-current={activeStage === stage.href ? "step" : undefined} href={stage.href} key={stage.href} onClick={() => setActiveStage(stage.href)}><span className="player-stage-number">{String(index + 1).padStart(2, "0")}</span><span className="player-stage-label">{stage.label}</span></a>)}
+  </nav>;
 }
 
 export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: string }) {
@@ -465,12 +496,15 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
           <h1 className="font-display text-3xl text-white sm:text-4xl">เมื่อคุณคิดว่ารู้คำตอบแล้ว</h1>
           <p className="max-w-2xl text-sm leading-6 text-white/70">เลือกคดีที่ทำเสร็จแล้ว จากนั้นส่งคำตอบตามเงื่อนไขของแฟ้มคดีนั้น</p>
         </header>
-        <div className="grid gap-3 sm:grid-cols-2" data-guide="submit-case" data-player-reveal="primary">
-          {selectableCases.map((item) => (
+        <div className="player-submission-choices" data-guide="submit-case" data-player-reveal="primary">
+          {selectableCases.map((item, index) => (
             <button className="player-choice" key={item.id} onClick={() => void startDraft(item.id)} type="button">
+              {item.image ? <img alt="" aria-hidden="true" className="player-choice-image" src={item.image} /> : null}
+              <span className="player-choice-index">CASE / {String(index + 1).padStart(2, "0")}</span>
               <span className="player-eyebrow">{item.eyebrow}</span>
-              <span className="font-display text-2xl text-white">{item.title}</span>
-              <span className="text-xs text-white/55">{item.subtitle}</span>
+              <strong>{item.title}</strong>
+              <span className="player-choice-subtitle">{item.subtitle}</span>
+              <span className="player-choice-action">เปิดแฟ้มส่งคำตอบ <span aria-hidden="true">↗</span></span>
             </button>
           ))}
         </div>
@@ -505,12 +539,16 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
         <h1>เมื่อคุณคิดว่ารู้คำตอบแล้ว</h1>
         <p className="text-sm text-white/65">แบบร่างบันทึกอัตโนมัติเมื่อคุณเปลี่ยนคำตอบ</p>
       </header>
-      <nav aria-label="ส่วนของแฟ้มส่งคำตอบ" className="player-form-stages">
-        {stages.map((stage, index) => <a href={stage.href} key={stage.href}><span>{String(index + 1).padStart(2, "0")}</span>{stage.label}</a>)}
-      </nav>
+      <SubmissionStageRail stages={stages} />
       <section className="player-submission-case" id="submission-stage-case">
-        <div><span className="player-eyebrow">01 / {activeCase.eyebrow}</span><h2>{activeCase.title}</h2></div>
-        <Link className="player-text-action" href={activeCase.route}>กลับไปเปิดหลักฐาน</Link>
+        {activeCase.image ? <img alt="" aria-hidden="true" className="player-submission-case-image" src={activeCase.image} /> : null}
+        <div className="player-submission-case-content">
+          <span className="player-eyebrow">กำลังบันทึกคำให้การ / {activeCase.eyebrow}</span>
+          <h2>{activeCase.title}</h2>
+          <p>{activeCase.subtitle || "อ่านหลักฐานให้ครบก่อนสรุปคำตอบ"}</p>
+          <Link className="player-text-action" href={activeCase.route}>↗ กลับไปเปิดหลักฐาน</Link>
+        </div>
+        <span aria-hidden="true" className="player-submission-case-mark">CASE<br />FILE</span>
       </section>
       {submission.answerForm ? (
         <QuestionnairePanel
@@ -526,11 +564,11 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
         />
       ) : null}
       {answerAttachmentAllowed ? (
-        <Panel data-guide="submit-answer-attachment" id="submission-stage-answer-attachment">
+        <Panel className="player-submission-panel" data-guide="submit-answer-attachment" id="submission-stage-answer-attachment">
           <span className="player-eyebrow">FILE / ANSWER ATTACHMENT</span>
           <h2 className="mt-2 font-display text-2xl text-white">ส่งคำตอบเป็นไฟล์</h2>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-white/70">เลือกส่งคำตอบที่กรอกในระบบ หรือแนบไฟล์หนึ่งรายการแทนกันได้ ไฟล์จะเก็บในพื้นที่ส่วนตัวและไม่แสดงผ่านคลังสาธารณะ</p>
-          <label className="mt-5 grid gap-2 text-sm text-white/80">
+          <label className="player-attachment-zone mt-5 grid gap-2 text-sm text-white/80">
             <span>{answerAttachment ? "มีไฟล์คำตอบแนบแล้ว" : `อนุญาต: ${submission.requirements.allowedAnswerAttachmentExtensions.map((extension) => extension.toUpperCase()).join(", ")}`}</span>
             <input accept={attachmentAccept(submission.requirements.allowedAnswerAttachmentExtensions)} aria-describedby="answer-attachment-state" className="min-h-12 max-w-full border border-white/20 bg-black p-2 text-sm file:mr-3 file:min-h-9 file:border-0 file:bg-white/10 file:px-3 file:text-white" disabled={uploading || Boolean(submission.uploads.answerAttachment)} onChange={(event) => void uploadFile("answer_attachment", event.currentTarget.files?.[0])} type="file" />
           </label>
@@ -556,7 +594,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
         />
       ) : null}
       {submission.requirements.requiresAiChatPdf ? (
-        <Panel data-guide="submit-ai-pdf" id="submission-stage-ai-pdf">
+        <Panel className="player-submission-panel" data-guide="submit-ai-pdf" id="submission-stage-ai-pdf">
           <span className="player-eyebrow">AI CHAT PDF</span>
           <h2 className="mt-2 font-display text-2xl text-white">ไฟล์ PDF บทสนทนากับ AI</h2>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-white/70">ไฟล์จะถูกเก็บในพื้นที่ส่วนตัวเพื่อวิเคราะห์งานวิจัยเท่านั้น จำกัดขนาดไม่เกิน 20 MB และไม่แสดงผ่านคลังไฟล์สาธารณะ</p>
@@ -569,7 +607,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
             <span>{aiPdfNotice || "ฉันเข้าใจว่าในการส่งคำตอบ ระบบจะขอให้ฉันอัปโหลดไฟล์ PDF บทสนทนากับ AI เพื่อใช้ในงานวิจัย และไฟล์ดังกล่าวจะถูกจัดเก็บในพื้นที่ส่วนตัว"}</span>
           </label>
           {acknowledgementPending ? <p className="mt-3 text-sm text-white/65" role="status">กำลังบันทึกการยืนยัน…</p> : null}
-          <label className="mt-5 grid gap-2 text-sm text-white/80">
+          <label className="player-attachment-zone mt-5 grid gap-2 text-sm text-white/80">
             <span>{aiChatPdf ? "มีไฟล์ PDF แนบแล้ว" : "เลือกไฟล์ PDF"}</span>
             <input accept="application/pdf,.pdf" aria-describedby="pdf-upload-state" className="min-h-12 max-w-full border border-white/20 bg-black p-2 text-sm file:mr-3 file:min-h-9 file:border-0 file:bg-white/10 file:px-3 file:text-white" disabled={!acknowledged || uploading || acknowledgementPending} onChange={(event) => void uploadFile("ai_chat_pdf", event.currentTarget.files?.[0])} type="file" />
           </label>
@@ -622,17 +660,26 @@ function QuestionnairePanel({
   const [complete, setComplete] = useState(form.completed);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
+  const answeredCount = form.questions.filter((question) => hasAnswer(answers[question.id])).length;
+  const questionCount = form.questions.length;
 
   return (
-    <Panel data-guide={guideTarget} id={sectionId}>
-      <span className="player-eyebrow">{stage} / {stage === "02" ? "คำตอบของคุณ" : "POST-TEST"}</span>
-      <h2 className="mt-2 font-display text-2xl">{form.title}</h2>
-      <div className="mt-5 grid gap-6">
-        {form.questions.map((question) => {
+    <Panel className="player-questionnaire" data-guide={guideTarget} id={sectionId}>
+      <div className="player-questionnaire-heading">
+        <div><span className="player-eyebrow">{stage} / {stage === "02" ? "คำตอบของคุณ" : "POST-TEST"}</span><h2>{form.title}</h2></div>
+        <div aria-label={`กรอกแล้ว ${answeredCount} จาก ${questionCount} ข้อ`} className="player-questionnaire-count"><strong>{String(answeredCount).padStart(2, "0")}</strong><span>/ {String(questionCount).padStart(2, "0")} ข้อที่กรอก</span></div>
+      </div>
+      <div aria-label={`ความคืบหน้าการกรอก ${answeredCount} จาก ${questionCount} ข้อ`} aria-valuemax={questionCount} aria-valuemin={0} aria-valuenow={answeredCount} className="player-questionnaire-progress" role="progressbar"><span style={{ width: `${questionCount ? answeredCount / questionCount * 100 : 0}%` }} /></div>
+      <p className="player-questionnaire-help">อ่านคำถามทีละข้อ แล้วบันทึกแบบสอบถามเมื่อพร้อม</p>
+      <div className="player-question-list">
+        {form.questions.map((question, index) => {
           const required = question.required || requiredQuestionKeys.includes(question.key);
+          const answered = hasAnswer(answers[question.id]);
+          const promptId = `question-${form.sessionId}-${question.id}`;
           return (
-            <fieldset className="player-question text-sm leading-6 text-white/85" disabled={complete} key={question.id}>
-              <legend>{question.promptTh}{required ? <span className="ml-1 text-orange-200">*</span> : null}</legend>
+            <fieldset aria-labelledby={promptId} className="player-question text-sm leading-6 text-white/85" data-answered={answered} disabled={complete} key={question.id}>
+              <div className="player-question-heading" id={promptId}><span className="player-question-number">Q{String(index + 1).padStart(2, "0")}</span><span className="player-question-prompt">{question.promptTh}{required ? <span className="ml-1 text-orange-200">*</span> : null}</span></div>
+              <span className="player-question-state">{answered ? "กรอกแล้ว" : required ? "รอคำตอบ" : "ข้ามได้"}</span>
               {question.type === "scale" ? (
                 <span className="grid grid-cols-5 gap-2">
                   {Array.from({ length: 5 }, (_, index) => index + 1).map((value) => (

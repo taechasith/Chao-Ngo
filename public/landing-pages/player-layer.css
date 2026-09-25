@@ -1,0 +1,57 @@
+/* Product layer only: no scene, shader, camera, physics, or texture overrides. */
+.chao-scene-entry{position:fixed;z-index:30;left:clamp(24px,5.5vw,104px);bottom:clamp(32px,8vh,88px);width:min(340px,calc(100% - 48px));padding:16px 18px;border-left:1px solid rgba(255,118,77,.55);background:linear-gradient(90deg,rgba(3,5,5,.82),rgba(3,5,5,.3) 85%,transparent);transition:opacity .25s,visibility .25s}
+.chao-scene-entry.is-away{opacity:0;visibility:hidden;pointer-events:none}
+.chao-enter{display:flex;align-items:center;justify-content:space-between;min-height:52px;width:100%;background:#e77850;color:#0c0d0c;padding:12px 18px;font-size:15px;font-weight:700;border:1px solid #ff9d79;transition:background .2s}
+.chao-enter:hover{background:#ff9874}.chao-enter span{font-size:23px}
+.chao-entry-note{display:block;font-size:11px;line-height:1.6;color:#a8afad;margin-top:12px}
+a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid #a1dad2!important;outline-offset:5px!important}
+.chao-skip{position:fixed;z-index:99999;top:12px;left:16px;transform:translateY(-180%);background:#a1dad2;color:#07100e;padding:12px 20px}.chao-skip:focus{transform:none}
+@media(max-width:640px){.chao-scene-entry{left:18px;bottom:clamp(20px,8vh,64px);width:min(340px,calc(100% - 36px));padding:14px 16px;background:linear-gradient(90deg,rgba(3,5,5,.85),rgba(3,5,5,.35),transparent)}.chao-enter{min-height:48px}}
+@media(prefers-reduced-motion:reduce){.chao-scene-entry,.chao-enter{transition:none}}
+
+#termstatus .txt{display:none}.chao-terminal-status{color:inherit;font-size:inherit}
+.hero .lede{display:grid;gap:clamp(20px,2vw,28px);padding:clamp(24px,2.5vw,36px)}
+.hero .lede .hero-actions{margin-top:0;gap:12px}
+#top,#work,#research,#people{scroll-margin-top:5rem}
+
+/* The case heading and its note should size to their content at every breakpoint. */
+.featured .head{align-items:stretch;gap:1rem;margin-bottom:1.5rem}
+.featured .head .framed:first-child{min-width:0;padding:clamp(1.1rem,2vw,1.7rem)}
+.featured .head h2{max-width:24ch;font-size:clamp(1.85rem,3.8vw,3rem);line-height:1.18}
+.featured .head .sub{display:flex;align-items:center;flex:0 1 25rem;max-width:25rem;padding:clamp(1.1rem,2vw,1.7rem)}
+.featured .head .sub p{font-size:clamp(.88rem,1.2vw,1rem);line-height:1.55}
+
+/* A small visual clue, short prompt and action give each mind-map route a purpose. */
+.logos .framed.label{padding:.55rem .8rem}
+.logos .framed.label h2{font-size:clamp(.82rem,1.5vw,1rem);line-height:1.35;letter-spacing:.05em}
+.logos .section-title{font-size:clamp(1.9rem,4vw,3rem);line-height:1.2}
+.logos .mind-card{--mind-accent:#8fc9c5;min-height:11.25rem;overflow:hidden;background:radial-gradient(circle at 82% 38%,color-mix(in srgb,var(--mind-accent) 13%,transparent),transparent 42%),#0b0e0d;transition:transform .25s ease,background .25s ease}
+.logos .mind-card[data-theme="space"]{--mind-accent:#d9b879}
+.logos .mind-card[data-theme="bio"]{--mind-accent:#9dc79b}
+.logos .mind-card[data-theme="fintech"]{--mind-accent:#e09b83}
+.logos .mind-card::after{border-color:color-mix(in srgb,var(--mind-accent) 32%,transparent)}
+.logos .mind-card:hover,.logos .mind-card:focus-visible{transform:translateY(-3px);background-color:#111714}
+.logos .mind-card:hover::after,.logos .mind-card:focus-visible::after{border-color:var(--mind-accent)}
+.logos .mind-card .cell{padding:1.15rem 1.25rem;gap:.35rem;align-items:stretch}
+.logos .mind-card .lines{opacity:.1}
+.logos .mind-card:hover .lines,.logos .mind-card:focus-visible .lines{opacity:.22}
+.logos .mind-card .mind-no{order:0;color:var(--mind-accent);font-size:.68rem;line-height:1.3}
+.logos .mind-card .mind-title{order:1;margin-top:auto;padding-right:5.25rem;font-size:clamp(1.25rem,1.8vw,1.5rem);line-height:1.2}
+.logos .mind-card .mind-copy{order:2;max-width:27ch;padding-right:4.5rem;color:#bfc9c3;font-size:.86rem;line-height:1.4}
+.logos .mind-action{position:relative;z-index:2;order:3;display:flex;align-items:center;justify-content:space-between;margin-top:.45rem;padding-top:.55rem;border-top:1px solid color-mix(in srgb,var(--mind-accent) 26%,transparent);color:var(--mind-accent);font-size:.78rem;font-weight:700}
+.logos .mind-action span{font-size:1.25rem;line-height:1;transition:transform .25s ease}
+.logos .mind-card:hover .mind-action span,.logos .mind-card:focus-visible .mind-action span{transform:translate(3px,-3px)}
+.logos .mind-art{position:absolute;z-index:1;top:2.25rem;right:1.3rem;width:4.5rem;aspect-ratio:1;border:1px solid color-mix(in srgb,var(--mind-accent) 42%,transparent);border-radius:50%;background:radial-gradient(circle,var(--mind-accent) 0 3px,transparent 4px),repeating-radial-gradient(circle,transparent 0 12px,color-mix(in srgb,var(--mind-accent) 20%,transparent) 13px 14px,transparent 15px 24px);opacity:.78;transition:transform .4s ease,opacity .4s ease;pointer-events:none}
+.logos .mind-art::before{content:"";position:absolute;inset:11%;border:1px dashed color-mix(in srgb,var(--mind-accent) 60%,transparent);border-radius:50%;transform:rotate(-26deg) scaleY(.48)}
+.logos .mind-art::after{content:"";position:absolute;top:24%;left:14%;width:.45rem;height:.45rem;border-radius:50%;background:var(--mind-accent);box-shadow:0 0 12px var(--mind-accent)}
+.logos .mind-card:hover .mind-art,.logos .mind-card:focus-visible .mind-art{transform:rotate(18deg) scale(1.08);opacity:1}
+.logos .mind-card[data-theme="space"] .mind-art{background:radial-gradient(circle at 28% 26%,#fff 0 1px,transparent 2px),radial-gradient(circle at 70% 35%,#fff 0 1px,transparent 2px),radial-gradient(circle at 54% 70%,#fff 0 1px,transparent 2px),radial-gradient(circle at center,var(--mind-accent) 0 4px,transparent 5px),radial-gradient(circle,color-mix(in srgb,var(--mind-accent) 25%,transparent),transparent 65%)}
+.logos .mind-card[data-theme="bio"] .mind-art{background:radial-gradient(circle at 36% 38%,var(--mind-accent) 0 7px,transparent 8px),radial-gradient(circle at 67% 61%,color-mix(in srgb,var(--mind-accent) 70%,transparent) 0 10px,transparent 11px),radial-gradient(circle at 70% 24%,color-mix(in srgb,var(--mind-accent) 40%,transparent) 0 4px,transparent 5px)}
+.logos .mind-card[data-theme="bio"] .mind-art::before{inset:8%;transform:rotate(35deg) scaleY(.72)}
+.logos .mind-card[data-theme="fintech"] .mind-art{border-radius:.3rem;background:linear-gradient(to top,var(--mind-accent) 0 32%,transparent 33%) 18% 76%/14% 62% no-repeat,linear-gradient(to top,var(--mind-accent) 0 54%,transparent 55%) 42% 76%/14% 62% no-repeat,linear-gradient(to top,var(--mind-accent) 0 76%,transparent 77%) 66% 76%/14% 62% no-repeat,linear-gradient(135deg,color-mix(in srgb,var(--mind-accent) 17%,transparent),transparent)}
+.logos .mind-card[data-theme="fintech"] .mind-art::before{inset:10%;border-radius:0;transform:none}
+.logos .mind-card[data-theme="fintech"] .mind-art::after{display:none}
+@media(max-width:1023px){.featured .head{display:grid}.featured .head .framed:first-child{flex:none;width:100%}.featured .head .sub{width:100%;max-width:none;flex:none}}
+@media(min-width:560px) and (max-width:1023px){.logos .grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){.logos .mind-card .mind-copy{padding-right:3.5rem}.logos .mind-art{right:1rem;width:4rem}}
+@media(prefers-reduced-motion:reduce){.logos .mind-card,.logos .mind-art,.logos .mind-action span{transition:none}}

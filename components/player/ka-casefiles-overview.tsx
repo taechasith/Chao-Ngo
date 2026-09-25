@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { kaSubgames } from "../../lib/ka-casefiles";
 import { InvestigativeActionMarker } from "./investigative-action";
+import type { PlayerCase } from "../../lib/server/content/player-catalog";
 import { StatusBadge } from "./panel";
 
 type ProgressRow = {
@@ -19,7 +20,8 @@ function progressLabel(status?: string): string {
   return "พร้อมเริ่มสำรวจ";
 }
 
-export function KaCasefilesOverview() {
+export function KaCasefilesOverview({ cases, unavailable }: { cases: PlayerCase[]; unavailable: boolean }) {
+  const canPlay = (id: string) => cases.some(item => item.id === id && item.status === "playable");
   const [progress, setProgress] = useState<ProgressRow[]>([]);
 
   useEffect(() => {
@@ -50,7 +52,7 @@ export function KaCasefilesOverview() {
       </header>
 
       <section aria-label="เลือกคดีใน THE K.A. CASEFILES" className="player-route-index" data-guide="ka-case-selection" data-player-reveal="primary">
-        <Link className="player-route-card" href={kaSubgames.maimee.route}>
+        {canPlay(kaSubgames.maimee.id) ? <Link className="player-route-card" href={kaSubgames.maimee.route}>
           <Image
             alt="ภาพจากแฟ้มคดี MAIMEE"
             className="player-case-image"
@@ -66,9 +68,9 @@ export function KaCasefilesOverview() {
             <span className="player-case-status"><span aria-hidden="true" />{progressLabel(progressBySubgame.get(kaSubgames.maimee.id))}</span>
             <InvestigativeActionMarker>เปิดคดี MAIMEE</InvestigativeActionMarker>
           </div>
-        </Link>
+        </Link> : null}
 
-        <Link className="player-route-card" href={kaSubgames["wa-ve"].route}>
+        {canPlay(kaSubgames["wa-ve"].id) ? <Link className="player-route-card" href={kaSubgames["wa-ve"].route}>
           <Image
             alt="ภาพบุคลากรจากแฟ้มคดี WA VE"
             className="player-case-image"
@@ -83,12 +85,13 @@ export function KaCasefilesOverview() {
             <span className="player-case-status"><span aria-hidden="true" />{progressLabel(progressBySubgame.get(kaSubgames["wa-ve"].id))}</span>
             <InvestigativeActionMarker>เปิดคดี WA VE</InvestigativeActionMarker>
           </div>
-        </Link>
+        </Link> : null}
+        {!cases.some(item => item.status === "playable") ? <p className="player-panel" role="status">{unavailable ? "ยังโหลดสถานะแฟ้มไม่ได้ ลองใหม่ภายหลัง" : "ยังไม่มีคดีย่อยที่เปิดให้เล่น"}</p> : null}
       </section>
 
       <section className="player-ai-strip" data-player-reveal="primary">
         <div>
-          <span className="player-eyebrow">SUBMISSION / SOURCE CONTRACT</span>
+          <span className="player-eyebrow">SUBMISSION / ส่งคำอธิบาย</span>
           <h2>ส่งคำอธิบายของคุณเป็นข้อความหรือไฟล์หนึ่งชิ้น</h2>
           <p>ทั้งสองคดีใช้เกณฑ์ NetLood City เดียวกัน: เหตุและไทม์ไลน์ หลักฐาน ความไม่แน่นอน และระบบป้องกันที่คำนึงถึงคน</p>
         </div>

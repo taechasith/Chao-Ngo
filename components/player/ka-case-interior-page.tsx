@@ -1,3 +1,4 @@
+import { getCasePublication } from "../../lib/server/content/player-catalog";
 import Link from "next/link";
 
 import { kaGame, kaNodeLabels, kaSubmissionGuide, kaSubgames, kaTimelineNodes, type KaSubgameSlug } from "../../lib/ka-casefiles";
@@ -28,6 +29,8 @@ export async function KaCaseInteriorPage({
   pageTitle,
 }: KaCaseInteriorPageProps) {
   const subgame = kaSubgames[caseSlug];
+  const publication = await getCasePublication(subgame.id);
+  if (publication !== "playable") return <PlayerShell pageTitle={pageTitle}><section className="player-panel"><span className="player-eyebrow">สถานะแฟ้มคดี</span><h1 className="mt-3 text-2xl">{publication === "closed" ? "แฟ้มนี้ยังไม่เปิดให้เล่น" : "ยังตรวจสอบสถานะแฟ้มไม่ได้"}</h1><p className="mt-3">กลับไปเลือกแฟ้มที่เปิดให้สำรวจ หรือลองใหม่ภายหลัง</p><Link className="player-button mt-4" href="/play">กลับไปยังแฟ้มคดี</Link></section></PlayerShell>;
   const fallbackNodes: PlayerTimelineNode[] = kaTimelineNodes[caseSlug];
   const publishedTimeline = await getPlayerTimeline({
     gameSlug: kaGame.slug,
@@ -78,7 +81,7 @@ export async function KaCaseInteriorPage({
           </aside>
         </section>
 
-        <div className="quantum-evidence-anchor" id="evidence">
+        <div className="quantum-evidence-anchor">
           <EvidenceDesk gameTitle={kaGame.title} guideScope="ka-case" initialSlug={caseSlug} nodeLabels={kaNodeLabels} nodes={nodes} subgameId={subgame.id} />
         </div>
 

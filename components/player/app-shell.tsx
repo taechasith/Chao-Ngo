@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { gsap } from "gsap";
-import { FolderOpen, House, LogOut, Menu, NotebookPen, Play, Send, Settings, UserRound, X } from "lucide-react";
+import { FolderOpen, House, LogOut, Menu, NotebookPen, Send, Settings, UserRound, X } from "lucide-react";
 
 import { AccountGate, type AccountStatus } from "./account-gate";
 import { AchievementToast } from "./achievement-toast";
@@ -24,7 +24,6 @@ const primaryLinks = [
   { href: "/", label: "ภาพรวม", match: (path: string) => path === "/", icon: House },
   { href: "/play", label: "แฟ้มคดี", match: (path: string) => path.startsWith("/play"), icon: FolderOpen },
   { href: "/onboarding", label: "งานวิจัย", match: (path: string) => path === "/onboarding", icon: NotebookPen },
-  { href: "/onboarding", label: "เริ่มเล่น", match: () => false, icon: Play },
 ];
 
 const utilityLinks = [
@@ -62,11 +61,15 @@ function contextForPath(pathname: string) {
   if (pathname === "/onboarding") return { parent: "งานวิจัย", current: "ก่อนเริ่มแฟ้มคดี", href: "/onboarding" };
   if (pathname === "/submit") return { parent: "แฟ้มคดี", current: "ส่งคำตอบ", href: "/play" };
   if (pathname === "/profile") return { parent: "เจ้าเงาะ", current: "ความคืบหน้า", href: "/" };
+  if (pathname === "/settings") return { parent: "เจ้าเงาะ", current: "ตั้งค่า", href: "/" };
   if (pathname === "/login" || pathname === "/signup") return { parent: "เจ้าเงาะ", current: "กลับเข้าสู่ระบบ", href: "/" };
   return { parent: "เจ้าเงาะ", current: "แฟ้มคดี", href: "/play" };
 }
 
 function guideKeyForPath(pathname: string) {
+  if (pathname === "/play") return "case-index";
+  if (pathname === "/profile") return "profile";
+  if (pathname === "/settings") return "settings";
   if (pathname === "/play/node-zone") return "timeline";
   if (pathname.includes("/quantum")) return "quantum";
   if (pathname.includes("/space")) return "space";
@@ -100,8 +103,9 @@ export function AppShell({ children, fullBleed = false, guideKey: providedGuideK
     try {
       const preference = window.localStorage.getItem("jao-ngoh-motion");
       if (preference) document.documentElement.dataset.motion = preference;
+      document.documentElement.dataset.textSize = window.localStorage.getItem("jao-ngoh-text-size") ?? "normal";
     } catch { /* The OS preference still applies when storage is unavailable. */ }
-    const motionReduced = document.documentElement.dataset.motion === "reduce"
+    const motionReduced = document.documentElement.dataset.motion === "off" || document.documentElement.dataset.motion === "reduce"
       || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     if (motionReduced) {
@@ -142,7 +146,10 @@ export function AppShell({ children, fullBleed = false, guideKey: providedGuideK
   }, [pathname]);
 
   useEffect(() => {
-    try { setShowSaveStatus(window.localStorage.getItem("jao-ngoh-show-save-status") !== "false"); } catch { /* Keep the visible default. */ }
+    const sync = () => { try { setShowSaveStatus(window.localStorage.getItem("jao-ngoh-show-save-status") !== "false"); } catch { /* Keep the visible default. */ } };
+    sync();
+    window.addEventListener("player-preferences-changed", sync);
+    return () => window.removeEventListener("player-preferences-changed", sync);
   }, []);
 
   useEffect(() => {
@@ -172,13 +179,45 @@ export function AppShell({ children, fullBleed = false, guideKey: providedGuideK
     };
   }, []);
 
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content || !window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+    let animationFrame = 0;
+    let active: HTMLElement | null = null;
+    const move = (event: PointerEvent) => {
+      const target = event.target instanceof Element
+        ? event.target.closest<HTMLElement>(".player-choice, .player-case-dossier, .player-route-card, .player-evidence-cell, .player-submission-case")
+        : null;
+      if (active !== target) {
+        active?.removeAttribute("data-spotlight");
+        active = target;
+      }
+      if (!target) return;
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || ["reduce", "off"].includes(document.documentElement.dataset.motion ?? "")) return;
+      const bounds = target.getBoundingClientRect();
+      const x = event.clientX - bounds.left;
+      const y = event.clientY - bounds.top;
+      cancelAnimationFrame(animationFrame);
+      animationFrame = requestAnimationFrame(() => {
+        target.style.setProperty("--spot-x", `${x.toFixed(1)}px`);
+        target.style.setProperty("--spot-y", `${y.toFixed(1)}px`);
+        target.setAttribute("data-spotlight", "");
+      });
+    };
+    const leave = () => { active?.removeAttribute("data-spotlight"); active = null; };
+    content.addEventListener("pointermove", move, { passive: true });
+    content.addEventListener("pointerleave", leave);
+    return () => {
+      cancelAnimationFrame(animationFrame);
+      active?.removeAttribute("data-spotlight");
+      content.removeEventListener("pointermove", move);
+      content.removeEventListener("pointerleave", leave);
+    };
+  }, [pathname]);
+
   useEffect(() => setUtilityOpen(false), [pathname]);
 
   useEffect(() => {
-    if (!requiresAccount) {
-      setAccountStatus("signed-in");
-      return;
-    }
 
     const controller = new AbortController();
     void fetch("/api/player-session", { credentials: "same-origin", signal: controller.signal })
@@ -253,7 +292,7 @@ export function AppShell({ children, fullBleed = false, guideKey: providedGuideK
           <div className="player-nav-actions">
             <p aria-live="polite" className="player-terminal">
               <span aria-hidden="true" className="player-terminal-led" />
-              <span className="player-terminal-prefix">mind@chao-ngo ~ $</span>
+              <span className="player-terminal-prefix">สถานะ /</span>
               <span className="player-terminal-state">{showSaveStatus ? state : ""}</span>
             </p>
             <button aria-expanded={utilityOpen} aria-controls="player-utilities" aria-label="เปิดเมนูเครื่องมือ" title="เมนูและเครื่องมือ" className="player-utility-trigger" ref={triggerRef} onClick={() => setUtilityOpen((open) => !open)} type="button">
@@ -298,6 +337,7 @@ export function AppShell({ children, fullBleed = false, guideKey: providedGuideK
       {showGameplayTools ? <nav aria-label="เครื่องมือหลัก" className="player-corner-tools">
         <Link href="/profile">โปรไฟล์</Link>
         <Link href="/submit">ส่งคำตอบ</Link>
+        <Link href="/settings">ตั้งค่า</Link>
         <HelpButton guideKey={guideKey} pageTitle={pageTitle} />
       </nav> : null}
 
@@ -311,6 +351,7 @@ export function AppShell({ children, fullBleed = false, guideKey: providedGuideK
         <HelpButton compact guideKey={guideKey} pageTitle={pageTitle} />
         </nav> : null}
       <UiSound />
+      <footer className="player-footer"><span>เจ้าเงาะ / SCIENCE DETECTIVE</span><span>Developed by Coeus Technology · CreativeLabTH Group</span></footer>
     </div>
   );
 }

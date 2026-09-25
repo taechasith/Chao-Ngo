@@ -1,10 +1,11 @@
+import { getCasePublication } from "../../lib/server/content/player-catalog";
 import Link from "next/link";
 
 import { CaseProgress } from "./case-progress";
 import { EvidenceDesk } from "./evidence-desk";
 import { GameSessionStarter } from "./game-session-starter";
 import { CasePanel, DecisionPanel, DossierPanel, EmptyState, EvidenceCell, PageIntro, PlayerShell, SystemStatus, UtilityStrip } from "./interior-system";
-import { getPlayerTimeline } from "../../lib/server/content/player-evidence";
+import { getPlayerTimeline, getPlayerAssistantUrl } from "../../lib/server/content/player-evidence";
 import { InvestigativeAction } from "./investigative-action";
 
 export type CaseInteriorPageProps = {
@@ -22,7 +23,9 @@ export type CaseInteriorPageProps = {
 };
 
 export async function CaseInteriorPage({ pageTitle, eyebrow, title, subtitle, description, meta, image, imageAlt, subgameId, timelineSlug, instructions }: CaseInteriorPageProps) {
-  const nodes = await getPlayerTimeline();
+  const publication = await getCasePublication(subgameId);
+  if (publication !== "playable") return <PlayerShell pageTitle={pageTitle}><section className="player-panel"><span className="player-eyebrow">สถานะแฟ้มคดี</span><h1 className="mt-3 text-2xl">{publication === "closed" ? "แฟ้มนี้ยังไม่เปิดให้เล่น" : "ยังตรวจสอบสถานะแฟ้มไม่ได้"}</h1><p className="mt-3">กลับไปเลือกแฟ้มที่เปิดให้สำรวจ หรือลองใหม่ภายหลัง</p><Link className="player-button mt-4" href="/play">กลับไปยังแฟ้มคดี</Link></section></PlayerShell>;
+  const [nodes, assistantUrl] = await Promise.all([getPlayerTimeline(), getPlayerAssistantUrl("node-zone")]);
   const activeNode = nodes?.find((node) => node.slug === timelineSlug);
 
   return (
@@ -43,7 +46,7 @@ export async function CaseInteriorPage({ pageTitle, eyebrow, title, subtitle, de
         </section>
         <section className="quantum-thinking-grid" data-player-reveal="primary">
           <CasePanel guideTarget="case-brief" eyebrow="CASE BRIEF / วิธีเริ่มคิด" title="อ่านแฟ้มเหมือนนักสืบวิทยาศาสตร์">
-            <p>ไฟล์ README ของคดีถูกสรุปไว้ตรงนี้แล้ว คุณไม่จำเป็นต้องออกจากเกมไปเปิดไฟล์ต้นฉบับ</p>
+            <p>เริ่มจากแนวทางเหล่านี้ แล้วใช้หลักฐานในแฟ้มสร้างคำอธิบายของคุณ</p>
             <ol className="interior-thinking-list">{instructions.map((instruction, index) => <li key={instruction.title}><span>{String(index + 1).padStart(2, "0")}</span><div><strong>{instruction.title}</strong><p>{instruction.body}</p></div></li>)}</ol>
           </CasePanel>
           <aside className="quantum-memory-rail">
@@ -51,8 +54,8 @@ export async function CaseInteriorPage({ pageTitle, eyebrow, title, subtitle, de
             {activeNode?.files.length ? <div className="interior-evidence-preview" aria-label={`ตัวอย่างหลักฐานใน${subtitle}`}>{activeNode.files.slice(0, 3).map((file, index) => <EvidenceCell index={index + 1} key={file.id} kind={file.kind.toUpperCase()} title={file.title} />)}</div> : <EmptyState description="ระบบยังโหลดรายการหลักฐานไม่สำเร็จ ลองเปิดแฟ้มอีกครั้งเพื่อกลับไปที่โต๊ะหลักฐาน" title="ยังจัดวางหลักฐานไม่ได้" />}
           </aside>
         </section>
-        <div className="quantum-evidence-anchor" id="evidence"><EvidenceDesk initialSlug={timelineSlug} nodes={nodes} /></div>
-        <DecisionPanel guideTarget="case-ai" action={<InvestigativeAction href="https://gemini.google.com/gem/45cb7e3f0314" intent="secondary" rel="noopener noreferrer" target="_blank">เปิด Gemini ↗</InvestigativeAction>} eyebrow="REQUIRED / AI คู่คิด / GEMINI" title="ก่อนส่งคำตอบ ต้องคุยกับ AI คู่คิด">
+        <div className="quantum-evidence-anchor"><EvidenceDesk initialSlug={timelineSlug} nodes={nodes} /></div>
+        <DecisionPanel guideTarget="case-ai" action={<InvestigativeAction href={assistantUrl} intent="secondary" rel="noopener noreferrer" target="_blank">เปิด Gemini ↗</InvestigativeAction>} eyebrow="REQUIRED / AI คู่คิด / GEMINI" title="ก่อนส่งคำตอบ ต้องคุยกับ AI คู่คิด">
           <p>ใช้ Gemini เพื่อถาม อธิบายแนวคิด และทดสอบคำอธิบายของคุณ จากนั้นบันทึกบทสนทนาเป็น PDF เพื่อแนบตอนส่งคำตอบ</p>
           <p>AI อาจตอบผิดได้ ตรวจคำตอบกับหลักฐานในแฟ้มคดีเสมอ คำตอบสุดท้ายยังเป็นของคุณ</p>
         </DecisionPanel>
