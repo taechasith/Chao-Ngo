@@ -2,9 +2,11 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { kaRouteForSubgameId } from "../../lib/ka-casefiles";
+import { ProfileIdentity } from "../../components/player/profile-identity";
+import { ResearchProfileEditor } from "../../components/player/research-profile-editor";
 import { AppShell } from "../../components/player/app-shell";
 import { Panel, StatusBadge } from "../../components/player/panel";
 import { InvestigativeAction } from "../../components/player/investigative-action";
@@ -20,7 +22,7 @@ type ProfileData = {
   notifications: Array<{ body_th: string; created_at: string; kind: string }>;
   progress: ProgressItem[];
   submissions: SubmissionItem[];
-  user: { createdAt?: string; email: string; name: string };
+  user: { createdAt?: string; email: string; name: string; image?: string | null };
 };
 
 const caseImages: Record<string, string> = {
@@ -64,37 +66,37 @@ function statusLabel(status: string) {
   return "ยังไม่เริ่ม";
 }
 
-function initials(name: string) {
-  return name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "JG";
+export default function ProfilePage() {
+  return <AppShell pageTitle="โปรไฟล์และความคืบหน้า"><ProfileContent /></AppShell>;
 }
 
-export default function ProfilePage() {
+function ProfileContent() {
   const [data, setData] = useState<ProfileData | null>(null);
   const [loadingMessage, setLoadingMessage] = useState("กำลังเปิดแฟ้มประวัติของคุณ");
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState("");
-  const [savingName, setSavingName] = useState(false);
-  const [profileMessage, setProfileMessage] = useState("");
-
+  const [researchMessage, setResearchMessage] = useState("กำลังอ่านความคืบหน้า…");
   useEffect(() => {
     const controller = new AbortController();
-    void Promise.all([
-      fetch("/api/player-progress", { credentials: "same-origin", signal: controller.signal }),
-      fetch("/api/player-notifications", { credentials: "same-origin", signal: controller.signal }),
-      fetch("/api/auth/get-session", { credentials: "same-origin", signal: controller.signal }),
-    ]).then(async ([progressResponse, notificationsResponse, sessionResponse]) => {
-      const progressBody = await progressResponse.json() as Omit<ProfileData, "notifications" | "user"> & { code?: string };
-      if (!progressResponse.ok) throw new Error(progressBody.code ?? "PROFILE_UNAVAILABLE");
-      const notificationsBody = notificationsResponse.ok ? await notificationsResponse.json() as { notifications?: ProfileData["notifications"] } : {};
-      const sessionBody = sessionResponse.ok ? await sessionResponse.json() as { user?: ProfileData["user"] } : {};
-      if (!sessionBody.user?.email) throw new Error("PROFILE_SESSION_UNAVAILABLE");
-      const nextData = { ...progressBody, notifications: notificationsBody.notifications ?? [], user: sessionBody.user } as ProfileData;
-      setData(nextData);
-      setName(nextData.user.name);
-      setLoadingMessage("");
-    }).catch((error: unknown) => {
-      if (!controller.signal.aborted) setLoadingMessage(error instanceof Error && error.message === "RESEARCH_CONSENT_REQUIRED" ? "ยืนยัน Consent ก่อนจึงจะดูสถานะการวิจัยได้" : "ยังเปิดข้อมูลโปรไฟล์ไม่ได้ ลองใหม่อีกครั้ง");
-    });
+    void (async () => {
+      try {
+        const profileResponse = await fetch("/api/player-profile", { signal: controller.signal, credentials: "same-origin" });
+        if (!profileResponse.ok) throw new Error("PROFILE_UNAVAILABLE");
+        const { user } = await profileResponse.json() as { user: ProfileData["user"] };
+        setData({ user, achievements: [], consent: null, evidence: [], letter: null, notifications: [], progress: [], submissions: [] });
+        setLoadingMessage("");
+        const progressResponse = await fetch("/api/player-progress", { signal: controller.signal, credentials: "same-origin" });
+        const body = await progressResponse.json() as Omit<ProfileData, "user" | "notifications"> & { code?: string };
+        if (!progressResponse.ok) {
+          setResearchMessage(body.code === "RESEARCH_CONSENT_REQUIRED" ? "คุณยังไม่ได้ยืนยันการเข้าร่วมวิจัย อ่านรายละเอียดและตัดสินใจได้ที่หน้าก่อนเริ่มเล่น" : body.code === "RESEARCH_CONSENT_UNAVAILABLE" ? "ขณะนี้การเก็บข้อมูลวิจัยยังไม่เปิดให้ใช้งาน" : "ยังอ่านความคืบหน้าไม่ได้ กรุณาลองอีกครั้ง");
+          return;
+        }
+        const notificationsResponse = await fetch("/api/player-notifications", { signal: controller.signal, credentials: "same-origin" });
+        const notes = notificationsResponse.ok ? await notificationsResponse.json() as { notifications?: ProfileData["notifications"] } : {};
+        setData({ ...body, user, notifications: notes.notifications ?? [] });
+        setResearchMessage("");
+      } catch {
+        if (!controller.signal.aborted) { setLoadingMessage("ยังเปิดข้อมูลโปรไฟล์ไม่ได้ ลองโหลดอีกครั้ง"); setResearchMessage("ยังอ่านความคืบหน้าไม่ได้ ลองโหลดอีกครั้ง"); }
+      }
+    })();
     return () => controller.abort();
   }, []);
 
@@ -108,46 +110,28 @@ export default function ProfilePage() {
     return map;
   }, [data]);
 
-  async function saveProfile(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const nextName = name.trim();
-    if (!nextName || savingName) return;
-    setSavingName(true); setProfileMessage("");
-    try {
-      const response = await fetch("/api/auth/update-user", { body: JSON.stringify({ name: nextName }), credentials: "same-origin", headers: { "Content-Type": "application/json" }, method: "POST" });
-      if (!response.ok) throw new Error("PROFILE_UPDATE_FAILED");
-      setData((current) => current ? { ...current, user: { ...current.user, name: nextName } } : current);
-      setEditing(false); setProfileMessage("บันทึกชื่อแล้ว");
-    } catch { setProfileMessage("บันทึกชื่อไม่ได้ในขณะนี้"); }
-    finally { setSavingName(false); }
-  }
-
   return (
-    <AppShell pageTitle="โปรไฟล์และความคืบหน้า">
       <div className="player-content">
         <header className="player-page-heading" data-player-reveal="heading"><StatusBadge>PLAYER PROFILE / CASE ARCHIVE</StatusBadge><h1>แฟ้มที่คุณเคยเปิด</h1><p>กลับมาดูว่าคุณกำลังสืบอะไร เปิดหลักฐานไว้แค่ไหน และสถานะงานวิจัยของคุณอยู่ตรงไหน</p></header>
         {!data ? <section className="player-profile-layout" data-player-reveal="primary"><Panel><p className="player-empty-memory" role="status">{loadingMessage}</p></Panel></section> : <>
-          <section className="player-profile-identity" data-player-reveal="primary">
-            <div className="player-profile-avatar" aria-label={`อวตารของ ${data.user.name}`}>{initials(data.user.name)}</div>
-            <div className="player-profile-identity-copy"><span className="player-eyebrow">IDENTITY / PLAYER</span><h2>{data.user.name}</h2><p>{data.user.email}</p><span>สมาชิกเจ้าเงาะ · เข้าร่วมเมื่อ {formatDate(data.user.createdAt)}</span></div>
-            {!editing ? <button className="player-button" onClick={() => setEditing(true)} type="button">แก้ไขโปรไฟล์</button> : <form className="player-profile-edit" onSubmit={saveProfile}><label className="sr-only" htmlFor="profile-name">ชื่อที่แสดง</label><input className="player-input" id="profile-name" maxLength={80} onChange={(event) => setName(event.target.value)} value={name} /><div><button className="player-button player-button--primary" disabled={savingName} type="submit">{savingName ? "กำลังบันทึก" : "บันทึก"}</button><button className="player-button" onClick={() => { setEditing(false); setName(data.user.name); }} type="button">ยกเลิก</button></div></form>}
-            {profileMessage ? <p className="player-profile-status" role="status">{profileMessage}</p> : null}
-          </section>
+          <ProfileIdentity user={data.user} onSaved={(user) => setData(current => current ? { ...current, user: { ...current.user, ...user } } : current)} />
+          <ResearchProfileEditor />
+          {researchMessage ? <Panel><span className="player-eyebrow">ความคืบหน้าการเข้าร่วม</span><p className="mt-3" role="status">{researchMessage}</p><Link className="player-button mt-4" href="/onboarding">รายละเอียดก่อนเริ่มเล่น</Link></Panel> : <>
           <section className="player-profile-section"><header><span className="player-eyebrow">CURRENT CASE / MEMORY</span><h2>ตอนนี้คุณกำลังสืบอะไรอยู่?</h2></header>{activeCase ? <CaseRecord item={activeCase} evidence={evidenceBySubgame.get(activeCase.subgame_id)} submission={submissionBySubgame.get(activeCase.subgame_id)} active /> : <p className="player-empty-memory">ยังไม่มีคดีที่กำลังสืบอยู่ เลือกแฟ้มเพื่อเริ่มบันทึกความคืบหน้าของคุณ</p>}</section>
           <section className="player-profile-section"><header><span className="player-eyebrow">CASE ARCHIVE / แฟ้มที่เคยเปิด</span><h2>ประวัติการสืบของคุณ</h2></header>{visibleProgress.length || legacyKaHistory.length ? <div className="player-archive-grid">{visibleProgress.map((item) => <CaseRecord item={item} evidence={evidenceBySubgame.get(item.subgame_id)} submission={submissionBySubgame.get(item.subgame_id)} key={item.subgame_id} />)}{legacyKaHistory.length ? <LegacyKaHistoryRecord items={legacyKaHistory} /> : null}</div> : <p className="player-empty-memory">ยังไม่มีแฟ้มคดีที่บันทึกไว้</p>}</section>
           <section className="player-profile-section"><header><span className="player-eyebrow">ACHIEVEMENTS / DOSSIER STAMPS</span><h2>สิ่งที่ระบบจดจำไว้</h2></header>{data.achievements.length ? <div className="player-achievement-stamps">{data.achievements.map((item) => <article className="player-achievement-stamp" key={`${item.achievement_key}:${item.subgame_id}:${item.earned_at}`}><strong>{achievementNames[item.achievement_key] ?? "กิจกรรมสำคัญในคดี"}</strong><span>{formatDate(item.earned_at)}</span></article>)}</div> : <p className="player-empty-memory">เมื่อคุณทำกิจกรรมสำคัญในคดี ระบบจะจดจำไว้ที่นี่</p>}</section>
           <section className="player-profile-section"><header><span className="player-eyebrow">RESEARCH PARTICIPATION / STATUS</span><h2>สถานะการมีส่วนร่วม</h2></header><div className="player-research-status-grid"><ResearchStatus label="Consent" value={data.consent ? `ยืนยันแล้ว · ${data.consent.consent_version}` : "ยังไม่มีข้อมูล"} /><ResearchStatus label="Submission" value={data.submissions.length ? data.submissions.map((item) => statusLabel(item.status)).join(" · ") : "ยังไม่มีข้อมูล"} /><ResearchStatus label="AI PDF" value={data.submissions.some((item) => item.ai_pdf_uploaded === 1) ? "แนบแล้วในพื้นที่ส่วนตัว" : "ยังไม่มีไฟล์ที่แนบ"} /><ResearchStatus label="หนังสือขอบคุณ" value={data.letter?.status === "emailed" ? "ส่งแล้ว" : data.letter?.status === "eligible" ? "ผ่านเกณฑ์ รอการส่ง" : data.letter?.status === "pending" ? "กำลังตรวจเกณฑ์" : "ยังไม่มีข้อมูล"} /></div></section>
           {data.notifications.length ? <section className="player-profile-section"><header><span className="player-eyebrow">RECENT NOTES</span><h2>บันทึกล่าสุดจากแฟ้ม</h2></header><div className="player-notification-list">{data.notifications.slice(0, 3).map((item) => <p key={`${item.kind}:${item.created_at}`}>{item.body_th}<span>{formatDate(item.created_at)}</span></p>)}</div></section> : null}
+          </>}
         </>}
       </div>
-    </AppShell>
   );
 }
 
 function LegacyCaseRecord({ active = false, evidence, item, submission }: { active?: boolean; evidence?: EvidenceItem; item: ProgressItem; submission?: SubmissionItem }) {
   const slug = item.subgame_slug === "quantum" || item.subgame_slug === "space" ? item.subgame_slug : null;
   const evidenceText = evidence && evidence.evidence_total > 0 ? `หลักฐาน ${Math.min(evidence.evidence_viewed, evidence.evidence_total)} / ${evidence.evidence_total}` : "หลักฐานยังไม่มีข้อมูล";
-  return <article className={`player-case-record${active ? " player-case-record--active" : ""}`}><div className="player-case-record-thumb">{slug ? <Image alt="" fill sizes="5rem" src={caseImages[slug]} /> : null}</div><div className="player-case-record-copy"><span className="player-eyebrow">{active ? "ACTIVE CASE" : "ARCHIVE"}</span><h3>{slug === "quantum" ? "THE CORRECT TRAJECTORY" : slug === "space" ? "THIRTEEN DAYS IN UTOPIA" : item.subgame_title}</h3><p>{caseLabel(item)} · {statusLabel(item.status)}</p><span>{evidenceText} · กิจกรรมล่าสุด {formatDate(item.last_activity_at)}</span>{submission ? <span>การส่ง: {statusLabel(submission.status)}</span> : null}<div className="player-case-record-actions">{slug ? <><InvestigativeAction href={`/play/node-zone/${slug}`}>{active ? "เล่นต่อ" : "เปิดแฟ้ม"}</InvestigativeAction>{evidence?.last_evidence_at ? <Link className="player-button" href={`/play/node-zone/${slug}#evidence`}>เปิดหลักฐานล่าสุด</Link> : null}</> : null}</div></div></article>;
+  return <article className={`player-case-record${active ? " player-case-record--active" : ""}`}><div className="player-case-record-thumb">{slug ? <Image alt="" fill sizes="(max-width: 496px) 100vw, 240px" src={caseImages[slug]} /> : null}</div><div className="player-case-record-copy"><span className="player-eyebrow">{active ? "ACTIVE CASE" : "ARCHIVE"}</span><h3>{slug === "quantum" ? "THE CORRECT TRAJECTORY" : slug === "space" ? "THIRTEEN DAYS IN UTOPIA" : item.subgame_title}</h3><p>{caseLabel(item)} · {statusLabel(item.status)}</p><span>{evidenceText} · กิจกรรมล่าสุด {formatDate(item.last_activity_at)}</span>{submission ? <span>การส่ง: {statusLabel(submission.status)}</span> : null}<div className="player-case-record-actions">{slug ? <><InvestigativeAction href={`/play/node-zone/${slug}`}>{active ? "เล่นต่อ" : "เปิดแฟ้ม"}</InvestigativeAction>{evidence?.last_evidence_at ? <Link className="player-button" href={`/play/node-zone/${slug}#evidence`}>เปิดหลักฐานล่าสุด</Link> : null}</> : null}</div></div></article>;
 }
 
 function CaseRecord({ active = false, evidence, item, submission }: { active?: boolean; evidence?: EvidenceItem; item: ProgressItem; submission?: SubmissionItem }) {
@@ -174,7 +158,7 @@ function CaseRecord({ active = false, evidence, item, submission }: { active?: b
         : "คดี WA VE";
 
   return <article className={`player-case-record${active ? " player-case-record--active" : ""}`}>
-    <div className="player-case-record-thumb"><Image alt="" fill sizes="5rem" src={caseImages[imageKey]} /></div>
+    <div className="player-case-record-thumb"><Image alt="" fill sizes="(max-width: 496px) 100vw, 240px" src={caseImages[imageKey]} /></div>
     <div className="player-case-record-copy">
       <span className="player-eyebrow">{active ? "ACTIVE CASE" : "ARCHIVE"}</span>
       <h3>{title}</h3>

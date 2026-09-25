@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { PlayerDialog } from "./player-dialog";
 import { createPortal } from "react-dom";
 import { ArrowLeft, ArrowRight, CircleHelp, SkipForward, X } from "lucide-react";
 
@@ -25,6 +26,12 @@ const kaCaseGuideSteps: GuideStep[] = [
 ];
 
 const guideSteps: Record<string, GuideStep[]> = {
+  "case-index": [
+    { target: "case-index", title: "เลือกแฟ้มที่คุณสงสัย", body: "แต่ละแฟ้มมีคดีย่อยให้สำรวจ เริ่มจากเรื่องไหนก่อนก็ได้ และกลับมาเล่นต่อได้จากโปรไฟล์" },
+  ],
+  profile: [
+    { target: "profile-identity", title: "ตัวตนในแฟ้มของคุณ", body: "เปลี่ยนรูปและชื่อที่แสดงได้ที่นี่ ข้อมูลคำตอบและแบบสอบถามเดิมจะยังคงอยู่" },
+  ],
   settings: [
     { target: "settings-auto-guide", title: "ให้เจ้าเงาะช่วยแนะนำไหม?", body: "เปิดไว้ถ้าคุณต้องการให้คำแนะนำปรากฏเมื่อพบระบบใหม่ครั้งแรก" },
     { target: "settings-reset-guides", title: "อยากเริ่มคำแนะนำใหม่?", body: "ใช้ปุ่มนี้เพื่อให้ระบบถือว่าคุณยังไม่เคยดูคำแนะนำ" },
@@ -129,9 +136,9 @@ function HelpDrawer({ guideKey, onClose, onStart, pageTitle, steps }: { guideKey
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
-  return createPortal(
-    <div className="player-help-drawer-backdrop" role="presentation">
-      <aside aria-label="คำแนะนำจากเจ้าเงาะ" aria-modal="true" className="player-help-drawer" role="dialog">
+  return (
+    <PlayerDialog className="player-help-modal" label="คำแนะนำจากเจ้าเงาะ" onClose={onClose}>
+      <aside className="player-help-drawer">
         <header className="player-guide-heading">
           <div><span className="player-eyebrow">HELP / {guideKey.toUpperCase()}</span><h2>เจ้าเงาะช่วยอะไรได้บ้าง?</h2><p>ตอนนี้คุณอยู่ที่ {pageTitle}</p></div>
           <button aria-label="ปิดคำแนะนำ" className="player-close-button" onClick={onClose} type="button"><X aria-hidden="true" size={19} /></button>
@@ -141,8 +148,7 @@ function HelpDrawer({ guideKey, onClose, onStart, pageTitle, steps }: { guideKey
         </nav>
         <footer><p>เลือกหัวข้อเพื่อให้เจ้าเงาะพาไปดูบนหน้าจอจริง</p><button className="player-button player-button--primary" onClick={() => onStart(0)} type="button">เริ่มคำแนะนำหน้านี้</button></footer>
       </aside>
-    </div>,
-    document.body,
+    </PlayerDialog>
   );
 }
 
@@ -151,6 +157,7 @@ export function GuideTour({ guideKey, initialStep = 0, onClose, pageTitle, steps
   const [stepIndex, setStepIndex] = useState(Math.min(initialStep, allSteps.length - 1));
   const [rect, setRect] = useState<DOMRect | null>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
+  const bubbleRef = useRef<HTMLElement>(null);
   const step = allSteps[stepIndex];
 
   useEffect(() => setStepIndex(Math.min(initialStep, allSteps.length - 1)), [allSteps.length, initialStep]);
@@ -166,6 +173,7 @@ export function GuideTour({ guideKey, initialStep = 0, onClose, pageTitle, steps
   }, [step.target]);
   useEffect(() => {
     returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    bubbleRef.current?.focus({ preventScroll: true });
     return () => { window.requestAnimationFrame(() => returnFocusRef.current?.focus()); };
   }, []);
 
@@ -179,7 +187,7 @@ export function GuideTour({ guideKey, initialStep = 0, onClose, pageTitle, steps
       frame = requestAnimationFrame(() => setRect(element?.getBoundingClientRect() ?? null));
     };
 
-    element?.scrollIntoView({ behavior: document.documentElement.dataset.motion === "off" ? "auto" : "smooth", block: "center", inline: "nearest" });
+    element?.scrollIntoView({ behavior: ["off", "reduce"].includes(document.documentElement.dataset.motion ?? "") || matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center", inline: "nearest" });
     timeout = window.setTimeout(update, 320);
     update();
     window.addEventListener("resize", update);
@@ -199,9 +207,16 @@ export function GuideTour({ guideKey, initialStep = 0, onClose, pageTitle, steps
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Tab") {
+        const controls = [...(bubbleRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? [])];
+        const first = controls[0]; const last = controls.at(-1);
+        if (event.shiftKey && (document.activeElement === first || document.activeElement === bubbleRef.current)) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+        return;
+      }
       if (event.key === "Escape") { event.preventDefault(); onClose(); return; }
       if (event.key === "ArrowLeft" && !isTypingTarget(event.target) && stepIndex > 0) { event.preventDefault(); setStepIndex((value) => value - 1); return; }
-      if (event.key === "Enter" && !isTypingTarget(event.target)) {
+      if (event.key === "Enter" && !isTypingTarget(event.target) && !(event.target instanceof Element && event.target.closest("button, a"))) {
         event.preventDefault();
         if (stepIndex === allSteps.length - 1) onClose();
         else setStepIndex((value) => value + 1);
@@ -234,7 +249,7 @@ export function GuideTour({ guideKey, initialStep = 0, onClose, pageTitle, steps
     <div className="player-tour-layer" role="presentation">
       <div className="player-tour-dimmer" />
       {rect ? <div aria-hidden="true" className="player-tour-spotlight" style={boxStyle} /> : null}
-      <aside aria-label={`คำแนะนำ: ${step.title}`} aria-modal="true" className="player-tour-bubble" role="dialog" style={bubbleStyle}>
+      <aside ref={bubbleRef} tabIndex={-1} aria-label={`คำแนะนำ: ${step.title}`} aria-modal="true" className="player-tour-bubble" role="dialog" style={bubbleStyle}>
         <header><span className="player-eyebrow">GUIDE / {String(stepIndex + 1).padStart(2, "0")} OF {String(allSteps.length).padStart(2, "0")}</span><button aria-label="ปิดคำแนะนำ" className="player-close-button" onClick={onClose} type="button"><X aria-hidden="true" size={18} /></button></header>
         <div className="player-tour-copy"><h2>{step.title}</h2><p>{step.body}</p><small>{pageTitle}</small></div>
         <img alt="" aria-hidden="true" className="player-tour-cat" src="/jao-ngoh-cat.png" />
@@ -247,7 +262,7 @@ export function GuideTour({ guideKey, initialStep = 0, onClose, pageTitle, steps
         </footer>
       </aside>
     </div>,
-    document.body,
+    document.querySelector("dialog[open] .player-dialog-content") ?? document.body,
   );
 }
 

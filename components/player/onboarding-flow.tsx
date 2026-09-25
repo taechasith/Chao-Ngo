@@ -547,14 +547,15 @@ function QuestionField({
   question: QuestionnaireQuestion;
 }) {
   const choiceOptions = getChoiceOptions(question.options);
+  const promptId = `onboarding-question-${question.id}`;
 
   if (question.type === "single") {
     return (
-      <fieldset className="player-question">
-        <legend className="text-base leading-7 text-white">
-          {question.promptTh}{question.required ? <span className="ml-1 text-cyan-100">*</span> : null}
-        </legend>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      <fieldset aria-labelledby={promptId} className="player-question">
+        <div className="player-question-heading text-base leading-7 text-white" id={promptId}>
+          <span className="player-question-prompt">{question.promptTh}{question.required ? <span className="ml-1 text-cyan-100">*</span> : null}</span>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
           {choiceOptions.map((option) => (
             <label className="player-option" key={option.value}>
               <input
@@ -576,11 +577,11 @@ function QuestionField({
     const selectedValues = Array.isArray(answer) ? answer.filter((value): value is string => typeof value === "string") : [];
 
     return (
-      <fieldset className="player-question">
-        <legend className="text-base leading-7 text-white">
-          {question.promptTh}{question.required ? <span className="ml-1 text-cyan-100">*</span> : null}
-        </legend>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      <fieldset aria-labelledby={promptId} className="player-question">
+        <div className="player-question-heading text-base leading-7 text-white" id={promptId}>
+          <span className="player-question-prompt">{question.promptTh}{question.required ? <span className="ml-1 text-cyan-100">*</span> : null}</span>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
           {choiceOptions.map((option) => {
             const isSelected = selectedValues.includes(option.value);
             const nextValue = isSelected
@@ -609,11 +610,11 @@ function QuestionField({
     const values = Array.from({ length: max - min + 1 }, (_, index) => min + index);
 
     return (
-      <fieldset className="player-question">
-        <legend className="text-base leading-7 text-white">
-          {question.promptTh}{question.required ? <span className="ml-1 text-cyan-100">*</span> : null}
-        </legend>
-        <div className="mt-3 grid grid-cols-5 gap-2">
+      <fieldset aria-labelledby={promptId} className="player-question">
+        <div className="player-question-heading text-base leading-7 text-white" id={promptId}>
+          <span className="player-question-prompt">{question.promptTh}{question.required ? <span className="ml-1 text-cyan-100">*</span> : null}</span>
+        </div>
+        <div className="grid grid-cols-5 gap-2">
           {values.map((value) => (
             <label className="player-scale-option" key={value}>
               <input

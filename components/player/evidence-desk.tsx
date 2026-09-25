@@ -52,7 +52,7 @@ export function EvidenceDesk({
   const visibleFiles = showAll ? filteredFiles : filteredFiles.slice(0, 6);
 
   useLayoutEffect(() => {
-    if (!lineRef.current || document.documentElement.dataset.motion === "reduce" || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (!lineRef.current || ["off", "reduce"].includes(document.documentElement.dataset.motion ?? "") || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const context = gsap.context(() => {
       gsap.fromTo(lineRef.current, { scaleY: 0 }, { scaleY: 1, duration: 0.8, ease: "power2.out" });
     });
@@ -163,9 +163,15 @@ function EvidenceContent({ file }: { file: PlayerEvidence }) {
   const [error, setError] = useState(false);
   const [text, setText] = useState<string | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [canEmbedPdf, setCanEmbedPdf] = useState(true);
   const [attempt, setAttempt] = useState(0);
+  const imageViewport = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
+  const [panning, setPanning] = useState(false);
+  function resetImage() { setZoom(1); if (imageViewport.current) imageViewport.current.scrollTo(0, 0); }
 
   useEffect(() => {
+    setCanEmbedPdf(navigator.pdfViewerEnabled !== false);
     if (!file.url || (file.kind !== "text" && file.kind !== "pdf")) return;
     const controller = new AbortController();
     let objectUrl: string | undefined;
@@ -198,13 +204,18 @@ function EvidenceContent({ file }: { file: PlayerEvidence }) {
         <button aria-label="ย่อภาพ" disabled={zoom <= 1} onClick={() => setZoom((value) => Math.max(1, value - 0.5))} title="ย่อภาพ" type="button"><Minus aria-hidden="true" size={18} /></button>
         <output aria-live="polite">{Math.round(zoom * 100)}%</output>
         <button aria-label="ขยายภาพ" disabled={zoom >= 3} onClick={() => setZoom((value) => Math.min(3, value + 0.5))} title="ขยายภาพ" type="button"><Plus aria-hidden="true" size={18} /></button>
-        <button aria-label="คืนขนาดภาพ" onClick={() => setZoom(1)} title="คืนขนาดภาพ" type="button"><RotateCcw aria-hidden="true" size={16} /></button>
+        <button aria-label="คืนขนาดภาพ" onClick={resetImage} title="คืนขนาดภาพ" type="button"><RotateCcw aria-hidden="true" size={16} /></button>
       </div>
-      <div aria-label="ภาพหลักฐาน" className="player-image-scroll" tabIndex={0}>
+      <div aria-label="ภาพหลักฐาน ใช้ปุ่มลูกศรเลื่อนเมื่อขยายภาพ" className={`player-image-scroll${panning ? " is-panning" : ""}`} tabIndex={0} ref={imageViewport}
+        onPointerDown={event => { if (zoom <= 1 || event.pointerType === "touch" || event.button !== 0) return; drag.current = { x: event.clientX, y: event.clientY, left: event.currentTarget.scrollLeft, top: event.currentTarget.scrollTop }; event.currentTarget.setPointerCapture(event.pointerId); setPanning(true); }}
+        onPointerMove={event => { if (!drag.current) return; event.currentTarget.scrollLeft = drag.current.left - event.clientX + drag.current.x; event.currentTarget.scrollTop = drag.current.top - event.clientY + drag.current.y; }}
+        onPointerUp={() => { drag.current = null; setPanning(false); }} onPointerCancel={() => { drag.current = null; setPanning(false); }} onLostPointerCapture={() => { drag.current = null; setPanning(false); }}
+        onKeyDown={event => { if (event.key === "0") resetImage(); else if (event.key === "+" || event.key === "=") setZoom(value => Math.min(3, value + .5)); else if (event.key === "-") setZoom(value => Math.max(1, value - .5)); }}
+      >
         {/* Evidence retains its original colors and proportions. */}
-        <img alt={file.title} onError={() => setError(true)} src={file.url} style={{ width: `${zoom * 100}%` }} />
+        <img draggable={false} alt={file.title} onError={() => setError(true)} src={file.url} style={{ width: `${zoom * 100}%` }} />
       </div>
-    </> : file.kind === "pdf" ? pdfUrl ? <object aria-label={file.title} className="player-pdf-viewer" data={pdfUrl} type="application/pdf"><p>เปิด PDF ในแท็บใหม่เพื่ออ่านเอกสาร <a href={file.url} rel="noopener noreferrer" target="_blank">เปิด PDF</a></p></object> : <p className="player-viewer-loading" role="status">กำลังเปิดเอกสาร…</p>
+    </> : file.kind === "pdf" ? pdfUrl ? <><div className="player-pdf-fallback"><span>หากเอกสารไม่แสดง เปิดแท็บใหม่หรือดาวน์โหลดเพื่ออ่าน</span><a href={pdfUrl} className="player-text-action" rel="noopener noreferrer" target="_blank">เปิด PDF ↗</a><a href={pdfUrl} className="player-text-action" download={`${file.title}.pdf`}>ดาวน์โหลด</a></div>{canEmbedPdf ? <iframe title={file.title} className="player-pdf-viewer" src={pdfUrl} /> : <div className="player-evidence-unavailable"><FileText aria-hidden="true" size={40} /><h3>อ่านเอกสารด้วยโปรแกรม PDF</h3><p>เบราว์เซอร์นี้ไม่รองรับการแสดง PDF ในหน้าเว็บ ดาวน์โหลดไฟล์เพื่อเปิดอ่านได้</p><a className="player-button" download={`${file.title}.pdf`} href={pdfUrl}>ดาวน์โหลด PDF</a></div>}</> : <p className="player-viewer-loading" role="status">กำลังเปิดเอกสาร…</p>
       : file.kind === "text" ? text === null ? <p className="player-viewer-loading" role="status">กำลังเปิดบันทึก…</p> : <pre className="player-record-text" tabIndex={0}>{text}</pre>
         : file.kind === "audio" ? <div className="player-media-viewer"><Volume2 aria-hidden="true" size={48} strokeWidth={1} /><audio aria-label={file.title} controls onError={() => setError(true)} preload="metadata" src={file.url} /></div>
           : file.kind === "video" ? <video aria-label={file.title} className="player-video-viewer" controls onError={() => setError(true)} playsInline preload="metadata" src={file.url} />

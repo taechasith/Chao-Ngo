@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { FolderLock, ArrowUpRight, ShieldCheck } from "lucide-react";
 
 export type AccountStatus = "checking" | "signed-in" | "signed-out" | "unavailable";
 
@@ -46,19 +47,23 @@ export function AccountGate({ redirectTo, status }: { redirectTo: string; status
   return (
     <section className="player-account-gate" aria-live={checking ? "polite" : undefined} aria-labelledby="account-gate-title">
       <div className="player-account-gate-copy">
+        <div className="player-gate-symbol" aria-hidden="true"><FolderLock size={38} strokeWidth={1} /></div>
         <span className="player-eyebrow">PLAYER ACCESS / {checking ? "CHECKING" : unavailable ? "SETUP PENDING" : "BEFORE THE CASE"}</span>
-        <h1 id="account-gate-title">{checking ? "กำลังตรวจสอบแฟ้มของคุณ" : unavailable ? "บัญชีกำลังรอการเชื่อมต่อ D1" : copy.heading}</h1>
+        <h1 id="account-gate-title">{checking ? "กำลังตรวจสอบแฟ้มของคุณ" : unavailable ? "ยังเชื่อมต่อบัญชีไม่ได้" : copy.heading}</h1>
         <p>{checking
           ? "ระบบกำลังตรวจสอบพื้นที่สำหรับบันทึกความคืบหน้าและ Achievement ของคุณ"
           : unavailable
-            ? "ยังไม่สามารถสร้างบัญชีหรือบันทึกความคืบหน้าได้จนกว่าฐานข้อมูล D1 จะพร้อม การเข้าถึงข้อมูลผู้เล่นและการส่งคำตอบจึงยังคงปิดไว้"
+            ? "ระบบบัญชียังไม่พร้อมในขณะนี้ ลองอีกครั้งเพื่อกลับมาเปิดแฟ้มและบันทึกความคืบหน้าของคุณ"
             : copy.body}</p>
         {!checking && !unavailable ? <div className="player-account-gate-actions">
-          <Link className="player-button player-button--primary" href={`/signup?next=${encodeURIComponent(redirectTo)}`}>สร้างบัญชี</Link>
+          <Link className="player-button player-button--primary" href={`/signup?next=${encodeURIComponent(redirectTo)}`}>สร้างบัญชี <ArrowUpRight size={16} aria-hidden="true" /></Link>
           <Link className="player-button" href={`/login?next=${encodeURIComponent(redirectTo)}`}>เข้าสู่ระบบ</Link>
         </div> : null}
+        {unavailable ? <button className="player-button" onClick={() => window.location.reload()} type="button">ลองเชื่อมต่ออีกครั้ง</button> : null}
+        {!checking ? <p className="player-gate-note"><ShieldCheck size={15} aria-hidden="true" /> การสร้างบัญชีไม่ใช่การยินยอมเข้าร่วมวิจัย</p> : null}
       </div>
       <aside className="player-account-gate-rail" aria-label="ลำดับก่อนเปิดแฟ้ม">
+        <span className="player-eyebrow">เส้นทางของคุณ</span>
         {copy.trail.map((item, index) => <span key={item}><b>{String(index + 1).padStart(2, "0")}</b>{item}</span>)}
       </aside>
     </section>
