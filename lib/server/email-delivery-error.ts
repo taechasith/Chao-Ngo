@@ -12,17 +12,23 @@ export type EmailDeliveryFailure = {
   status: number | null;
   resendError: string | null;
   reason: string;
+  responseFormat?: "json" | "html" | "text" | "empty";
 };
 
 export function describeResendFailure(status: number, body: unknown): EmailDeliveryFailure {
-  const payload = body && typeof body === "object" ? body as Record<string, unknown> : {};
+  const root = body && typeof body === "object" ? body as Record<string, unknown> : {};
+  const payload = root.error && typeof root.error === "object" ? root.error as Record<string, unknown> : root;
   const name = typeof payload.name === "string" && resendErrorNames.has(payload.name) ? payload.name : "unknown";
-  const message = typeof payload.message === "string" ? payload.message.toLowerCase() : "";
+  const responseFormat = typeof body === "string" ? (body.trim() ? (/<(?:!doctype|html)\b/i.test(body) ? "html" : "text") : "empty") : "json";
+  const message = (typeof payload.message === "string" ? payload.message : typeof payload.error === "string" ? payload.error : typeof body === "string" ? body : "").toLowerCase();
   let reason = "provider_rejected";
 
-  if (message.includes("only send testing emails")) reason = "testing_recipient_restriction";
+  if (/error(?: code)?[^0-9]{0,80}1010\b/.test(message)) reason = "upstream_firewall_1010";
+  else if (/error(?: code)?[^0-9]{0,80}1020\b/.test(message)) reason = "upstream_firewall_1020";
+  else if (/missing.*user.agent|user.agent.*required/.test(message)) reason = "missing_user_agent";
+  else if (message.includes("only send testing emails")) reason = "testing_recipient_restriction";
   else if (/domain.*not verified/.test(message)) reason = "sender_domain_not_verified";
-  else if (/domain.*(not allowed|not authorized)|domain.*does not match/.test(message)) reason = "sender_domain_not_allowed";
+  else if (/domain.*(not allowed|not authorized)|domain.*does not match|not authorized to send emails from/.test(message)) reason = "sender_domain_not_allowed";
   else if (name === "suspended_api_key") reason = "api_key_suspended";
   else if (name === "restricted_api_key" || name === "invalid_permission") reason = "api_key_restricted";
   else if (status === 401 || name === "invalid_api_key" || /api key.*invalid/.test(message)) reason = "invalid_api_key";
@@ -31,7 +37,7 @@ export function describeResendFailure(status: number, body: unknown): EmailDeliv
   else if (status >= 500) reason = "provider_unavailable";
   else if (status === 400 || status === 422) reason = "invalid_payload";
 
-  return { event: "transactional_email_delivery_failed", status, resendError: name, reason };
+  return { event: "transactional_email_delivery_failed", status, resendError: name, reason, responseFormat };
 }
 
 export function failEmailDelivery(failure: EmailDeliveryFailure): never {
