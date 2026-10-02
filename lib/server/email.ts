@@ -43,7 +43,9 @@ export async function sendTransactionalEmail(message: TransactionalEmail): Promi
   }).catch(() => failEmailDelivery({ event: "transactional_email_delivery_failed", status: null, resendError: null, reason: "network_error" }));
 
   if (!response.ok) {
-    const detail: unknown = await response.json().catch(() => null);
+    const raw = await response.text().catch(() => "");
+    let detail: unknown = raw;
+    try { detail = JSON.parse(raw); } catch { /* Classify non-JSON edge errors without logging their content. */ }
     failEmailDelivery(describeResendFailure(response.status, detail));
   }
 }

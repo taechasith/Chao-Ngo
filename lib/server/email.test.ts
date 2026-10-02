@@ -25,7 +25,7 @@ describe("transactional email diagnostics", () => {
     await expect(sendTransactionalEmail(message)).rejects.toThrow(reason);
     expect(console.error).toHaveBeenCalledOnce();
     const log = String(vi.mocked(console.error).mock.calls[0]?.[0]);
-    expect(JSON.parse(log)).toEqual({ event: "transactional_email_delivery_failed", status, resendError: name, reason });
+    expect(JSON.parse(log)).toEqual({ event: "transactional_email_delivery_failed", status, resendError: name, reason, responseFormat: "json" });
     for (const sensitive of [message.to, "private-token", bindings.RESEND_API_KEY, providerMessage]) expect(log).not.toContain(sensitive);
   });
 
@@ -43,6 +43,20 @@ describe("transactional email diagnostics", () => {
     await expect(sendTransactionalEmail(message)).rejects.toThrow("network_error");
     expect(send).toHaveBeenCalledOnce();
     expect(JSON.parse(String(vi.mocked(console.error).mock.calls[0]?.[0]))).toMatchObject({ status: null, reason: "network_error" });
+  });
+
+  it.each([
+    [JSON.stringify({ error: "Not authorized to send emails from example.test", statusCode: 403 }), "sender_domain_not_allowed", "json"],
+    [JSON.stringify({ error: { message: "The example.test domain is not verified", name: "validation_error" } }), "sender_domain_not_verified", "json"],
+    ["<html><h1>Access denied</h1>Error code: 1010 private@example.test private-token</html>", "upstream_firewall_1010", "html"],
+    ["error code: 1020 private-token", "upstream_firewall_1020", "text"],
+  ])("classifies alternate provider responses without exposing response text", async (raw, reason, responseFormat) => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(raw, { status: 403 }));
+    await expect(sendTransactionalEmail(message)).rejects.toThrow(reason);
+    const log = String(vi.mocked(console.error).mock.calls[0]?.[0]);
+    expect(JSON.parse(log)).toMatchObject({ reason, responseFormat });
+    expect(log).not.toContain("private-token");
+    expect(log).not.toContain("example.test");
   });
 
   it("fails before making a request when runtime configuration is missing", async () => {

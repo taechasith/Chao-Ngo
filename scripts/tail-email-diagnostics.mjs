@@ -9,6 +9,7 @@ const reasons = new Set([
   "api_key_suspended", "api_key_restricted", "invalid_api_key", "sending_quota_exceeded",
   "rate_limited", "provider_unavailable", "invalid_payload", "provider_rejected",
   "network_error", "not_configured",
+  "upstream_firewall_1010", "upstream_firewall_1020", "missing_user_agent",
 ]);
 const errorNames = new Set([
   "validation_error", "missing_api_key", "invalid_api_key", "restricted_api_key",
@@ -25,6 +26,7 @@ export function sanitizeEmailFailure(value) {
     status: Number.isInteger(value.status) && value.status >= 100 && value.status <= 599 ? value.status : null,
     resendError: errorNames.has(value.resendError) ? value.resendError : null,
     reason: value.reason,
+    ...(["json", "html", "text", "empty"].includes(value.responseFormat) ? { responseFormat: value.responseFormat } : {}),
   };
 }
 
