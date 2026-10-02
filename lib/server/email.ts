@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import { describeResendFailure, failEmailDelivery } from "./email-delivery-error";
 
 type EmailBindings = CloudflareEnv & {
   RESEND_API_KEY?: string;
@@ -18,7 +19,7 @@ function configuration() {
   const from = bindings.RESEND_FROM_EMAIL?.trim();
 
   if (!apiKey || !from) {
-    throw new Error("Transactional email is not configured.");
+    failEmailDelivery({ event: "transactional_email_delivery_failed", status: null, resendError: null, reason: "not_configured" });
   }
 
   return { apiKey, from };
@@ -39,10 +40,11 @@ export async function sendTransactionalEmail(message: TransactionalEmail): Promi
       "Content-Type": "application/json",
     },
     method: "POST",
-  });
+  }).catch(() => failEmailDelivery({ event: "transactional_email_delivery_failed", status: null, resendError: null, reason: "network_error" }));
 
   if (!response.ok) {
-    throw new Error(`Transactional email delivery failed with status ${response.status}.`);
+    const detail: unknown = await response.json().catch(() => null);
+    failEmailDelivery(describeResendFailure(response.status, detail));
   }
 }
 
