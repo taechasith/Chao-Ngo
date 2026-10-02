@@ -5,7 +5,7 @@ The player uses Google only. Existing user IDs, names, custom avatars and progre
 ## Google Cloud
 
 1. Open [Google Auth Platform](https://console.cloud.google.com/auth/overview). Select the project that will own Chao Ngo authentication, or create a project named **Chao Ngo** if none exists. Configure branding with the app name **Chao Ngo**, a monitored support email and developer contact chosen by the owner.
-2. Use an **External** audience for public players. During testing, add the intended Google test accounts. Public availability depends on the app's publishing status and Google's requirements.
+2. Use an **External** audience for public players. Google exempts apps requesting only basic identity (`openid`, `email`, `profile`) from the normal Testing test-user list requirement and seven-day authorization expiry. This does not establish the site's concurrent capacity or waive Google's other publishing requirements. The planned 300 players do not require additional Google data scopes.
 3. Request only `openid`, `email`, and `profile`. The app does not request Drive, Gmail, or offline access.
 4. Create an OAuth client of type **Web application**. Register these exact authorized redirect URIs:
 
@@ -29,6 +29,7 @@ Configure Google and Worker secrets **before** merging this auth change to main.
 
 ## Verify before public release
 
+- Provide an accessible public privacy-policy page accurately describing the app's Google identity use and other data processing; register its real URL in Google branding. Do not substitute a protected onboarding page or invent a policy URL.
 - Login and signup expose only Google; old verification/reset URLs return to login.
 - Turnstile is validated before starting Google's code flow. OAuth state, signed cookies, PKCE and same-origin callback validation stay enabled.
 - Complete a real Google sign-in using an allowed test account. New players go to onboarding; returning players retain their `next` destination.
@@ -39,4 +40,4 @@ Configure Google and Worker secrets **before** merging this auth change to main.
 
 Automated tests mock Google token exchange and Turnstile only. They do not prove real Google credentials, consent-screen publishing, or production callback registration.
 
-References: [Better Auth Google provider](https://better-auth.com/docs/authentication/google), [Google web-server OAuth](https://developers.google.com/identity/protocols/oauth2/web-server).
+References: [Better Auth Google provider](https://better-auth.com/docs/authentication/google), [Google web-server OAuth](https://developers.google.com/identity/protocols/oauth2/web-server), [Google audience and Testing exceptions](https://support.google.com/cloud/answer/15549945?hl=en), [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy).
