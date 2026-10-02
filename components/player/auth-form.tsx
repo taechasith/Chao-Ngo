@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { TurnstileWidget } from "./turnstile-widget";
 import { authDestination } from "../../lib/auth-navigation";
 
@@ -44,7 +45,7 @@ export function AuthForm({ mode, redirectTo, available, initialError }: AuthForm
     {available ? <TurnstileWidget action="login" key={turnstileResetKey} onTokenChange={setTurnstileToken} siteKey={siteKey} /> : <p className="player-google-auth-status" role="status">เข้าสู่ระบบด้วย Google ยังไม่พร้อมใช้งาน กรุณาลองอีกครั้งภายหลัง</p>}
     <button className="player-google-button" disabled={!available || isSubmitting} type="submit"><GoogleMark /><span>{isSubmitting ? "กำลังไปยัง Google…" : "ดำเนินการต่อด้วย Google"}</span></button>
     {message ? <p className="player-google-auth-error" role="alert">{message}</p> : null}
-    <p className="player-google-auth-privacy">ใช้ชื่อ รูปโปรไฟล์ และอีเมลจาก Google เพื่อสร้างบัญชีและเก็บความคืบหน้า</p>
+    <p className="player-google-auth-privacy">ใช้ชื่อ รูปโปรไฟล์ และอีเมลจาก Google เพื่อสร้างบัญชีและเก็บความคืบหน้า · <Link href="/privacy">อ่านนโยบายความเป็นส่วนตัว</Link></p>
     <p className="player-auth-note">หากเคยมีบัญชีแล้ว ให้เลือก Google ที่ใช้อีเมลเดียวกับบัญชีเดิม</p>
   </form>;
 }

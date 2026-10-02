@@ -29,7 +29,7 @@ Configure Google and Worker secrets **before** merging this auth change to main.
 
 ## Verify before public release
 
-- Provide an accessible public privacy-policy page accurately describing the app's Google identity use and other data processing; register its real URL in Google branding. Do not substitute a protected onboarding page or invent a policy URL.
+- Open the public privacy-policy page at `https://chaongo.creativelabth.com/privacy` and register that URL in Google branding. The page documents Google identity use and reuses the existing research notice with the current runtime retention period. Keep it accurate when data processing changes.
 - Login and signup expose only Google; old verification/reset URLs return to login.
 - Turnstile is validated before starting Google's code flow. OAuth state, signed cookies, PKCE and same-origin callback validation stay enabled.
 - Complete a real Google sign-in using an allowed test account. New players go to onboarding; returning players retain their `next` destination.
