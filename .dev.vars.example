@@ -1,0 +1,5 @@
+# Local development only. Never commit real credentials.
+BETTER_AUTH_URL=http://localhost:3000
+BETTER_AUTH_SECRET=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=

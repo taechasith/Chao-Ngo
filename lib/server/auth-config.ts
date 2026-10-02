@@ -46,3 +46,11 @@ export function getAuthReadiness(environment: AuthEnvironment): AuthReadiness {
     secret,
   };
 }
+
+export function getGoogleAuthConfiguration(environment: AuthEnvironment & { clientId?: string; clientSecret?: string }) {
+  const auth = getAuthReadiness(environment);
+  const clientId = environment.clientId?.trim();
+  const clientSecret = environment.clientSecret?.trim();
+  if (!auth.isReady || !auth.baseURL || !clientId?.endsWith(".apps.googleusercontent.com") || !clientSecret) return undefined;
+  return { clientId, clientSecret };
+}

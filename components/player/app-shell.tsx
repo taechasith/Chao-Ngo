@@ -45,6 +45,7 @@ function stateForPath(pathname: string) {
   if (pathname === "/submit") return "รอการตัดสินใจ";
   if (pathname === "/profile") return "CASE ARCHIVE";
   if (pathname === "/settings") return "SYSTEM CONTROL";
+  if (pathname === "/privacy") return "ความเป็นส่วนตัว";
   if (pathname === "/login" || pathname === "/signup") return "กำลังกลับเข้าสู่ระบบ";
   return "แฟ้มคดีพร้อม";
 }
@@ -62,6 +63,7 @@ function contextForPath(pathname: string) {
   if (pathname === "/submit") return { parent: "แฟ้มคดี", current: "ส่งคำตอบ", href: "/play" };
   if (pathname === "/profile") return { parent: "เจ้าเงาะ", current: "ความคืบหน้า", href: "/" };
   if (pathname === "/settings") return { parent: "เจ้าเงาะ", current: "ตั้งค่า", href: "/" };
+  if (pathname === "/privacy") return { parent: "เจ้าเงาะ", current: "ความเป็นส่วนตัว", href: "/" };
   if (pathname === "/login" || pathname === "/signup") return { parent: "เจ้าเงาะ", current: "กลับเข้าสู่ระบบ", href: "/" };
   return { parent: "เจ้าเงาะ", current: "แฟ้มคดี", href: "/play" };
 }
@@ -351,7 +353,7 @@ export function AppShell({ children, fullBleed = false, guideKey: providedGuideK
         <HelpButton compact guideKey={guideKey} pageTitle={pageTitle} />
         </nav> : null}
       <UiSound />
-      <footer className="player-footer"><span>เจ้าเงาะ / SCIENCE DETECTIVE</span><span>Developed by Coeus Technology · CreativeLabTH Group</span></footer>
+      <footer className="player-footer"><span>เจ้าเงาะ / SCIENCE DETECTIVE</span><Link href="/privacy">ความเป็นส่วนตัว</Link><span>Developed by Coeus Technology · CreativeLabTH Group</span></footer>
     </div>
   );
 }

@@ -12,6 +12,7 @@ describe("security headers", () => {
     expect(response.headers.get("Content-Security-Policy")).toContain("connect-src 'self' blob: https://cdn.creativelabth.com https://cloudflareinsights.com https://challenges.cloudflare.com");
     expect(response.headers.get("Content-Security-Policy")).toContain("frame-src 'self' blob: https://challenges.cloudflare.com");
     expect(response.headers.get("X-Frame-Options")).toBe("SAMEORIGIN");
+    expect(response.headers.get("Content-Security-Policy")).toContain("img-src 'self' data: blob: https://cdn.creativelabth.com https://*.googleusercontent.com");
     expect(await response.text()).toBe("ok");
   });
 });

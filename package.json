@@ -48,6 +48,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "@vitejs/plugin-rsc": "^0.5.35",
     "eslint": "10.11.0",
+    "jose": "6.2.12",
     "miniflare": "^5.20260918.0-alpha",
     "shadcn": "4.21.0",
     "tailwindcss": "4.3.3",
