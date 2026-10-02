@@ -1,34 +1,17 @@
-import Link from "next/link";
-
 import { AppShell } from "../../components/player/app-shell";
 import { AuthForm } from "../../components/player/auth-form";
 import { Panel } from "../../components/player/panel";
+import { authDestination, googleSignInError } from "../../lib/auth-navigation";
+import { getGoogleAuthConfigurationForRuntime } from "../../lib/server/auth";
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string; reset?: string }> }) {
+export const dynamic = "force-dynamic";
+
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string; error?: string }> }) {
   const params = await searchParams;
-  const redirectTo = params.next?.startsWith("/") && !params.next.startsWith("//") ? params.next : undefined;
-
-  return (
-    <AppShell pageTitle="เข้าสู่ระบบ">
-      <div className="player-auth-layout">
-        <header className="player-page-heading" data-player-reveal="heading">
-          <span className="player-eyebrow">RETURN TO THE CASE</span>
-          <h1>เข้าสู่ระบบ</h1>
-          <p>กลับไปยังความคืบหน้าและแฟ้มคดีของคุณ</p>
-          <p className="player-auth-note">บัญชีช่วยให้คุณเก็บสิ่งที่เคยสำรวจไว้และกลับมาคิดต่อจากจุดเดิม</p>
-        </header>
-        <div data-player-reveal="primary">
-          <Panel>
-            <AuthForm mode="login" redirectTo={redirectTo} />
-          </Panel>
-          {params.reset === "success" ? <p className="mt-4 text-sm text-cyan-100">ตั้งรหัสผ่านใหม่แล้ว เข้าสู่ระบบได้เลย</p> : null}
-          <p className="mt-5 text-sm text-white/70">
-            ยังไม่มีบัญชี?{" "}
-            <Link className="text-[#bfe6e2] underline decoration-white/30 underline-offset-4" href={redirectTo ? `/signup?next=${encodeURIComponent(redirectTo)}` : "/signup"}>สร้างบัญชี</Link>
-          </p>
-          <p className="mt-3 text-sm text-white/70"><Link className="text-[#bfe6e2] underline decoration-white/30 underline-offset-4" href="/forgot-password">ลืมรหัสผ่าน?</Link></p>
-        </div>
-      </div>
-    </AppShell>
-  );
+  return <AppShell pageTitle="เข้าสู่ระบบ">
+    <div className="player-auth-layout">
+      <header className="player-page-heading" data-player-reveal="heading"><span className="player-eyebrow">RETURN TO THE CASE</span><h1>เข้าสู่ระบบ</h1><p>กลับไปยังความคืบหน้าและแฟ้มคดีของคุณ</p><p className="player-auth-note">เลือกบัญชี Google แล้วกลับมาสืบต่อจากจุดเดิม</p></header>
+      <div data-player-reveal="primary"><Panel><AuthForm mode="login" redirectTo={authDestination(params.next)} available={Boolean(getGoogleAuthConfigurationForRuntime())} initialError={googleSignInError(params.error)} /></Panel><p className="player-auth-note">ผู้เล่นใหม่สร้างบัญชีได้ด้วยปุ่มเดียวกัน การเข้าสู่ระบบยังไม่ใช่การยินยอมเข้าร่วมการวิจัย</p></div>
+    </div>
+  </AppShell>;
 }

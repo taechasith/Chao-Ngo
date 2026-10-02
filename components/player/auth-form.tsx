@@ -1,159 +1,50 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Eye, EyeOff } from "lucide-react";
-import { InvestigativeAction } from "./investigative-action";
 import { TurnstileWidget } from "./turnstile-widget";
+import { authDestination } from "../../lib/auth-navigation";
 
-type AuthFormProps = {
-  mode: "login" | "signup";
-  redirectTo?: string;
-};
+type AuthFormProps = { mode: "login" | "signup"; redirectTo?: string; available: boolean; initialError?: string };
 
-type FormStatus =
-  | { kind: "idle" }
-  | { kind: "error"; message: string }
-  | { kind: "success"; message: string };
-
-function messageForFailure(status: number): string {
-  if (status === 403) {
-    return "โปรดยืนยันการตรวจสอบความปลอดภัยแล้วลองอีกครั้ง";
-  }
-
-  if (status === 503) {
-    return "การตรวจสอบความปลอดภัยไม่พร้อมใช้งานในขณะนี้";
-  }
-
-  if (status === 429) {
-    return "ลองใหม่อีกครั้งในภายหลัง";
-  }
-
-  return "ไม่สามารถดำเนินการได้ในขณะนี้";
+function GoogleMark() {
+  return <svg aria-hidden="true" viewBox="0 0 48 48" width="20" height="20"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5Z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6C44.4 38.03 46.98 31.91 46.98 24.55Z"/><path fill="#FBBC05" d="M10.53 28.59A14.41 14.41 0 0 1 9.75 24c0-1.59.27-3.13.76-4.59l-7.98-6.19A23.87 23.87 0 0 0 0 24c0 3.87.93 7.53 2.56 10.78l7.97-6.19Z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.91-5.8l-7.73-6c-2.15 1.45-4.92 2.3-8.18 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48Z"/></svg>;
 }
 
-export function AuthForm({ mode, redirectTo }: AuthFormProps) {
-  const router = useRouter();
-  const [status, setStatus] = useState<FormStatus>({ kind: "idle" });
+export function AuthForm({ mode, redirectTo, available, initialError }: AuthFormProps) {
+  const [message, setMessage] = useState(initialError ?? "");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
   const [turnstileResetKey, setTurnstileResetKey] = useState(0);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
-
-  const isSignup = mode === "signup";
+  const next = authDestination(redirectTo);
+  const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const email = String(form.get("email") ?? "").trim().toLowerCase();
-    const password = String(form.get("password") ?? "");
-    const name = String(form.get("name") ?? "").trim();
-
-    setIsSubmitting(true);
-    setStatus({ kind: "idle" });
-
-    const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim();
-
-    if (turnstileSiteKey && !turnstileToken) {
-      setStatus({ kind: "error", message: "โปรดยืนยันการตรวจสอบความปลอดภัยแล้วลองอีกครั้ง" });
-      setIsSubmitting(false);
-      return;
-    }
-
+    if (!available || isSubmitting) return;
+    if (siteKey && !turnstileToken) { setMessage("โปรดยืนยันการตรวจสอบความปลอดภัยก่อนเข้าสู่ระบบ"); return; }
+    setIsSubmitting(true); setMessage("");
     try {
-      const response = await fetch(isSignup ? "/api/auth/sign-up/email" : "/api/auth/sign-in/email", {
-        body: JSON.stringify(isSignup
-          ? { callbackURL: redirectTo ?? "/onboarding", email, name, password, turnstileToken }
-          : { callbackURL: redirectTo ?? "/onboarding", email, password, turnstileToken }),
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        method: "POST",
+      const response = await fetch("/api/auth/sign-in/social", {
+        body: JSON.stringify({ provider: "google", callbackURL: next, newUserCallbackURL: "/onboarding", errorCallbackURL: `/login?next=${encodeURIComponent(next)}`, disableRedirect: true, turnstileToken }),
+        credentials: "same-origin", headers: { "Content-Type": "application/json" }, method: "POST",
       });
-
-      if (!response.ok) {
-        const responseBody = await response.json().catch(() => null) as { code?: string } | null;
-        if (responseBody?.code === "EMAIL_NOT_VERIFIED") {
-          router.replace(`/verify-email?next=${encodeURIComponent(redirectTo ?? "/onboarding")}`);
-          return;
-        }
-        setStatus({ kind: "error", message: messageForFailure(response.status) });
-        setTurnstileToken(null);
-        setTurnstileResetKey((value) => value + 1);
-        return;
-      }
-
-      setStatus({
-        kind: "success",
-        message: isSignup
-          ? "สร้างบัญชีสำเร็จ โปรดตรวจกล่องจดหมายเพื่อยืนยันอีเมล"
-          : "เข้าสู่ระบบสำเร็จ",
-      });
-
-      router.replace(isSignup ? `/verify-email?next=${encodeURIComponent(redirectTo ?? "/onboarding")}` : redirectTo ?? "/onboarding");
-    } catch {
-      setStatus({ kind: "error", message: "ไม่สามารถเชื่อมต่อกับระบบได้" });
-    } finally {
-      setIsSubmitting(false);
+      const body = await response.json().catch(() => null) as { url?: string; code?: string } | null;
+      if (!response.ok || !body?.url) throw new Error(response.status === 429 ? "ลองเข้าสู่ระบบบ่อยเกินไป กรุณารอสักครู่" : response.status === 403 ? "การตรวจสอบความปลอดภัยไม่ผ่าน กรุณาลองอีกครั้ง" : response.status === 503 ? "เข้าสู่ระบบด้วย Google ยังไม่พร้อมใช้งานในขณะนี้" : "เข้าสู่ระบบด้วย Google ไม่สำเร็จ กรุณาลองอีกครั้ง");
+      const destination = new URL(body.url);
+      if (destination.origin !== "https://accounts.google.com") throw new Error("ไม่สามารถเปิดหน้าเข้าสู่ระบบ Google ได้");
+      window.location.assign(destination.href);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "ไม่สามารถเชื่อมต่อกับระบบได้");
+      setIsSubmitting(false); setTurnstileToken(null); setTurnstileResetKey(value => value + 1);
     }
   }
 
-  return (
-    <form className="space-y-5" onSubmit={submit}>
-      {isSignup ? (
-        <label className="grid gap-2 text-sm text-white/80">
-          ชื่อที่ใช้แสดง
-          <input
-            autoComplete="name"
-            className="player-input"
-            maxLength={100}
-            name="name"
-            required
-          />
-        </label>
-      ) : null}
-      <label className="grid gap-2 text-sm text-white/80">
-        อีเมล
-        <input
-          autoComplete="email"
-          className="player-input"
-          name="email"
-          spellCheck={false}
-          required
-          type="email"
-        />
-      </label>
-      <label className="grid gap-2 text-sm text-white/80">
-        รหัสผ่าน
-        <span className="player-password-field">
-        <input
-          autoComplete={isSignup ? "new-password" : "current-password"}
-          className="player-input"
-          minLength={12}
-          name="password"
-          required
-          type={showPassword ? "text" : "password"}
-        />
-        <button aria-label={showPassword ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"} aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)} title={showPassword ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"} type="button">{showPassword ? <EyeOff aria-hidden="true" size={18} /> : <Eye aria-hidden="true" size={18} />}</button>
-        </span>
-        {isSignup ? <span className="text-xs text-white/55">อย่างน้อย 12 ตัวอักษร</span> : null}
-      </label>
-      <TurnstileWidget
-        action={isSignup ? "signup" : "login"}
-        key={turnstileResetKey}
-        onTokenChange={setTurnstileToken}
-        siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim()}
-      />
-      {status.kind === "idle" ? null : (
-        <p aria-live="polite" className={status.kind === "error" ? "text-sm text-red-200" : "text-sm text-cyan-100"}>
-          {status.message}
-        </p>
-      )}
-      <InvestigativeAction
-        disabled={isSubmitting}
-        type="submit"
-      >
-        {isSubmitting ? "กำลังดำเนินการ" : isSignup ? "สร้างบัญชี" : "เข้าสู่ระบบ"}
-      </InvestigativeAction>
-    </form>
-  );
+  return <form className="player-google-auth" onSubmit={submit}>
+    <div className="player-google-auth-heading"><span className="player-eyebrow">YOUR GOOGLE ACCOUNT</span><h2>{mode === "signup" ? "เริ่มต้นด้วย Google" : "กลับมาสืบต่อ"}</h2><p>เลือกบัญชี Google เพื่อเข้าสู่พื้นที่ของคุณ</p></div>
+    {available ? <TurnstileWidget action="login" key={turnstileResetKey} onTokenChange={setTurnstileToken} siteKey={siteKey} /> : <p className="player-google-auth-status" role="status">เข้าสู่ระบบด้วย Google ยังไม่พร้อมใช้งาน กรุณาลองอีกครั้งภายหลัง</p>}
+    <button className="player-google-button" disabled={!available || isSubmitting} type="submit"><GoogleMark /><span>{isSubmitting ? "กำลังไปยัง Google…" : "ดำเนินการต่อด้วย Google"}</span></button>
+    {message ? <p className="player-google-auth-error" role="alert">{message}</p> : null}
+    <p className="player-google-auth-privacy">ใช้ชื่อ รูปโปรไฟล์ และอีเมลจาก Google เพื่อสร้างบัญชีและเก็บความคืบหน้า</p>
+    <p className="player-auth-note">หากเคยมีบัญชีแล้ว ให้เลือก Google ที่ใช้อีเมลเดียวกับบัญชีเดิม</p>
+  </form>;
 }

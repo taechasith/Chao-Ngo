@@ -15,7 +15,7 @@ function copyFor(redirectTo: string): GateCopy {
   if (redirectTo === "/play") return {
     heading: "เก็บความคืบหน้าก่อนเปิดแฟ้ม",
     body: "บัญชีช่วยบันทึกแฟ้มที่คุณเลือก หลักฐานที่เปิด และความคืบหน้าของการสืบไว้ให้กลับมาต่อได้",
-    trail: ["สร้างบัญชี", "ตอบคำถามก่อนเล่น", "เลือกแฟ้มคดี"],
+    trail: ["เข้าสู่ระบบด้วย Google", "ตอบคำถามก่อนเล่น", "เลือกแฟ้มคดี"],
   };
   if (redirectTo.includes("/quantum")) return {
     heading: "เข้าสู่ระบบเพื่อเปิด THE CORRECT TRAJECTORY",
@@ -56,8 +56,7 @@ export function AccountGate({ redirectTo, status }: { redirectTo: string; status
             ? "ระบบบัญชียังไม่พร้อมในขณะนี้ ลองอีกครั้งเพื่อกลับมาเปิดแฟ้มและบันทึกความคืบหน้าของคุณ"
             : copy.body}</p>
         {!checking && !unavailable ? <div className="player-account-gate-actions">
-          <Link className="player-button player-button--primary" href={`/signup?next=${encodeURIComponent(redirectTo)}`}>สร้างบัญชี <ArrowUpRight size={16} aria-hidden="true" /></Link>
-          <Link className="player-button" href={`/login?next=${encodeURIComponent(redirectTo)}`}>เข้าสู่ระบบ</Link>
+          <Link className="player-button player-button--primary" href={`/login?next=${encodeURIComponent(redirectTo)}`}>เข้าสู่ระบบด้วย Google <ArrowUpRight size={16} aria-hidden="true" /></Link>
         </div> : null}
         {unavailable ? <button className="player-button" onClick={() => window.location.reload()} type="button">ลองเชื่อมต่ออีกครั้ง</button> : null}
         {!checking ? <p className="player-gate-note"><ShieldCheck size={15} aria-hidden="true" /> การสร้างบัญชีไม่ใช่การยินยอมเข้าร่วมวิจัย</p> : null}

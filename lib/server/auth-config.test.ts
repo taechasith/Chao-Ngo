@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getAuthReadiness, minimumAuthSecretLength } from "./auth-config";
+import { getAuthReadiness, getGoogleAuthConfiguration, minimumAuthSecretLength } from "./auth-config";
 
 describe("getAuthReadiness", () => {
   it("fails closed without a high-entropy-length secret", () => {
@@ -32,5 +32,13 @@ describe("getAuthReadiness", () => {
         secret: "x".repeat(minimumAuthSecretLength),
       }),
     ).toEqual({ isReady: false });
+  });
+});
+
+describe("Google auth configuration", () => {
+  const settings = { baseURL: "https://example.test", secret: "x".repeat(32), clientId: "test.apps.googleusercontent.com", clientSecret: "test-only-google-secret" };
+  it("requires a valid base URL, auth secret and both OAuth credentials", () => {
+    expect(getGoogleAuthConfiguration(settings)).toEqual({ clientId: settings.clientId, clientSecret: settings.clientSecret });
+    for (const missing of [{ baseURL: undefined }, { secret: "short" }, { clientId: undefined }, { clientId: "invalid" }, { clientSecret: " " }]) expect(getGoogleAuthConfiguration({ ...settings, ...missing })).toBeUndefined();
   });
 });
