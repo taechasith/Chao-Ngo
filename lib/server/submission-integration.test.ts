@@ -13,9 +13,12 @@ import { GET as getSubmission, POST as startSubmission } from "../../app/api/sub
 import { POST as consent } from "../../app/api/research-consent/route";
 import { POST as acknowledge, DELETE as revokeAcknowledgement } from "../../app/api/submissions/[submissionId]/acknowledgement/route";
 import { POST as upload } from "../../app/api/submissions/[submissionId]/uploads/route";
+import { POST as revise } from "../../app/api/submissions/[submissionId]/revise/route";
 import { POST as finalize } from "../../app/api/submissions/[submissionId]/finalize/route";
 import { PUT as answer } from "../../app/api/questionnaire-sessions/[sessionId]/responses/route";
 import { POST as complete } from "../../app/api/questionnaire-sessions/[sessionId]/complete/route";
+import { GET as getQuestionnaire, POST as startQuestionnaire } from "../../app/api/questionnaires/[key]/sessions/route";
+import { GET as getResearchProfile, PATCH as updateResearchProfile } from "../../app/api/player-research-profile/route";
 import { GET as getPlayerNotifications } from "../../app/api/player-notifications/route";
 
 vi.setConfig({ testTimeout: 30_000 });
@@ -171,6 +174,8 @@ describe("B6 real D1/private R2 contracts", () => {
       requiresAnswerTextOrAttachment: true,
       requiresPosttest: false,
     });
+    const savedKa = await (await getSubmission(new Request(`https://example.test/api/submissions?subgameId=${kaSubgameId}`, { headers: { "x-test-user": stranger } }))).json() as { submission: { answerForm: { sessionId: string; questions: { id: string }[] } } };
+    expect((await answer(request("PUT", { questionId: savedKa.submission.answerForm.questions[0].id, value: "late attachment edit" }, stranger), sessionContext(savedKa.submission.answerForm.sessionId))).status).toBe(409);
     const completion = await recalculateCompletionForUser(stranger);
     expect(completion.completedSubgameIds).toContain(kaSubgameId);
     expect(completion.requiredSubgameIds).not.toContain(kaSubgameId);
@@ -233,6 +238,32 @@ describe("B6 real D1/private R2 contracts", () => {
     expect(await env.DB.prepare("SELECT status FROM thank_you_letters WHERE user_id = ?").bind(owner).first()).toMatchObject({ status: "pending" });
   });
 
+  it("copies requested revisions without changing old answers or files and completes the latest version", async () => {
+    expect((await revise(request("POST", undefined, stranger), context(id))).status).toBe(404);
+    const oldAnswers = await env.DB.prepare("SELECT question_id, value_json FROM responses WHERE session_id = ? ORDER BY question_id")
+      .bind(draft.answerForm.sessionId).all();
+    const created = await revise(request(), context(id));
+    expect(created.status).toBe(201);
+    const next = await created.json() as { submissionId: string };
+    expect((await (await revise(request(), context(id))).json() as typeof next).submissionId).toBe(next.submissionId);
+    const loaded = await (await startSubmission(request("POST", { subgameId }))).json() as { submission: typeof draft & { submissionId: string; uploads: { aiChatPdf: unknown } } };
+    expect(loaded.submission.submissionId).toBe(next.submissionId);
+    expect(loaded.submission.uploads.aiChatPdf).toBeNull();
+    expect(loaded.submission.answerForm.sessionId).not.toBe(draft.answerForm.sessionId);
+    expect((await env.DB.prepare("SELECT question_id, value_json FROM responses WHERE session_id = ? ORDER BY question_id").bind(loaded.submission.answerForm.sessionId).all()).results).toEqual(oldAnswers.results);
+    const questionId = draft.answerForm.questions[0].id;
+    await answer(request("PUT", { questionId, value: "Revised QA" }), sessionContext(loaded.submission.answerForm.sessionId));
+    expect(await env.DB.prepare("SELECT value_json FROM responses WHERE session_id = ? AND question_id = ?").bind(draft.answerForm.sessionId, questionId).first()).not.toEqual({ value_json: JSON.stringify("Revised QA") });
+    for (const form of [loaded.submission.answerForm, loaded.submission.posttestForm]) expect((await complete(request(), sessionContext(form.sessionId))).status).toBe(200);
+    expect((await finalize(request(), context(next.submissionId))).status).toBe(400);
+    await acknowledge(request("POST", { acknowledged: true, consentVersion: aiChatUploadConsentVersion }), context(next.submissionId));
+    expect((await upload(fileRequest(), context(next.submissionId))).status).toBe(201);
+    expect((await finalize(request(), context(next.submissionId))).status).toBe(201);
+    expect((await recalculateCompletionForUser(owner)).letterEligible).toBe(true);
+    expect(await env.PRIVATE_UPLOADS.head(key)).not.toBeNull();
+    expect((await revise(request(), context(next.submissionId))).status).toBe(409);
+  });
+
   it("honors legal holds, retries failed deletion, then purges only expired research", async () => {
     await env.DB.prepare(`UPDATE "user" SET research_retention_expires_at = '2020-01-01', research_retention_hold_until = '2099-01-01' WHERE id = ?`).bind(owner).run();
     expect(await cleanExpiredResearch(env)).toEqual({ completed: 0 });
@@ -256,5 +287,61 @@ describe("B6 real D1/private R2 contracts", () => {
     expect(await isWithinPlayerMutationLimit(stranger, "limit-test", 2)).toBe(false);
     await env.DB.prepare("UPDATE player_rate_limits SET window_started_at = '2000-01-01' WHERE rate_key = ?").bind(`limit-test:${stranger}`).run();
     expect(await isWithinPlayerMutationLimit(stranger, "limit-test", 2)).toBe(true);
+  });
+});
+
+
+describe("attachment-only revision", () => {
+  it("opens a new editable session even when the original text form was never completed", async () => {
+    const original = await env.DB.prepare("SELECT id, questionnaire_session_id FROM submissions WHERE user_id = ? AND subgame_id = ?").bind(stranger, kaSubgameId).first<{ id: string; questionnaire_session_id: string }>();
+    await env.DB.prepare("UPDATE submissions SET status = 'needs_revision' WHERE id = ?").bind(original!.id).run();
+    const revised = await revise(request("POST", undefined, stranger), context(original!.id));
+    expect(revised.status).toBe(201);
+    const next = await revised.json() as { submissionId: string };
+    const form = await env.DB.prepare("SELECT questionnaire_session_id FROM submissions WHERE id = ?").bind(next.submissionId).first<{ questionnaire_session_id: string }>();
+    expect(form!.questionnaire_session_id).not.toBe(original!.questionnaire_session_id);
+    expect(await env.DB.prepare("SELECT completed_at, closed_at FROM questionnaire_sessions WHERE id = ?").bind(form!.questionnaire_session_id).first()).toEqual({ completed_at: null, closed_at: null });
+  });
+});
+
+describe("onboarding saves personal data and resumes without writing consent again", () => {
+  const user = "game-profile-roundtrip";
+  const routeContext = { params: Promise.resolve({ key: "pregame" }) };
+  it("keeps consent, saved answers, completed result and current profile in real D1", async () => {
+    await env.DB.prepare('INSERT INTO "user" (id, name, email, emailVerified, createdAt, updatedAt) VALUES (?, ?, ?, 1, 0, 0)')
+      .bind(user, "Synthetic fixture", "fixture@example.test").run();
+    await consent(request("POST", { consentVersion, dataNoticeVersion, researchParticipation: true, aiChatUploadConsent: false }, user));
+    const originalConsent = await env.DB.prepare("SELECT id, consented_at FROM consent_records WHERE user_id = ?").bind(user).first();
+    const form = await (await startQuestionnaire(request("POST", undefined, user), routeContext)).json() as {
+      sessionId: string;
+      questionnaire: { questions: Array<{ id: string; key: string; type: string; options: Array<{ value: string }> }> };
+    };
+    for (const question of form.questionnaire.questions) {
+      const value = question.key === "age" ? "25" : question.type === "scale" ? 3
+        : question.type === "single" ? question.options[0].value
+        : question.type === "multi" ? [question.options[0].value] : "Synthetic QA";
+      expect((await answer(request("PUT", { questionId: question.id, value }, user), sessionContext(form.sessionId))).status).toBe(200);
+    }
+    const before = await (await getQuestionnaire(request("GET", undefined, user), routeContext)).json() as { sessionId: string; completed: boolean; responses: Record<string, unknown> };
+    expect(before.sessionId).toBe(form.sessionId);
+    expect(before.completed).toBe(false);
+    expect(Object.keys(before.responses)).toHaveLength(form.questionnaire.questions.length);
+    const cleared = form.questionnaire.questions.find(question => question.key === "institution")!;
+    expect((await answer(request("PUT", { questionId: cleared.id, value: null }, user), sessionContext(form.sessionId))).status).toBe(200);
+    const clearedForm = await (await getQuestionnaire(request("GET", undefined, user), routeContext)).json() as { responses: Record<string, unknown> };
+    expect(clearedForm.responses).not.toHaveProperty(cleared.id);
+    expect((await complete(request("POST", undefined, user), sessionContext(form.sessionId))).status).toBe(200);
+    const resumed = await (await getQuestionnaire(request("GET", undefined, user), routeContext)).json() as { completed: boolean; sessionId: string; recommendation: { subgameId: string } };
+    expect(resumed).toMatchObject({ completed: true, sessionId: form.sessionId, recommendation: { subgameId: expect.any(String) } });
+    const profile = await (await getResearchProfile(request("GET", undefined, user))).json() as { profile: { age: number; personalSkills: string[] } };
+    expect(profile.profile).toMatchObject({ age: 25, personalSkills: [] });
+    expect((await updateResearchProfile(request("PATCH", { ...profile.profile, personalSkills: ["ทักษะ QA"] }, user))).status).toBe(200);
+    const reread = await (await getResearchProfile(request("GET", undefined, user))).json() as typeof profile;
+    expect(reread.profile.personalSkills).toEqual(["ทักษะ QA"]);
+    const repeated = await (await complete(request("POST", undefined, user), sessionContext(form.sessionId))).json() as { recommendation: { subgameId: string } };
+    expect(repeated.recommendation.subgameId).toBe(resumed.recommendation.subgameId);
+    expect(await env.DB.prepare("SELECT id, consented_at FROM consent_records WHERE user_id = ?").bind(user).first()).toEqual(originalConsent);
+    const foreign = await (await getQuestionnaire(request("GET", undefined, stranger), routeContext)).json() as { sessionId: unknown };
+    expect(foreign.sessionId).not.toBe(form.sessionId);
   });
 });

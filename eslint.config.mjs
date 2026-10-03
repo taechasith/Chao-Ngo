@@ -15,6 +15,7 @@ export default tseslint.config(
       "node_modules/**",
       "src/shaders/**",
       "public/vendor/**",
+      "public/pdfjs/**",
     ],
   },
   { files: ["public/landing-pages/player-layer.js"], languageOptions: { globals: { document: "readonly", window: "readonly", Element: "readonly", MutationObserver: "readonly", requestAnimationFrame: "readonly" } } },

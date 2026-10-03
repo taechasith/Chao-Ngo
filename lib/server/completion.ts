@@ -75,6 +75,9 @@ export async function recalculateCompletionForUser(userId: string): Promise<Comp
       WHERE submissions.user_id = ?
         AND games.status = 'playable'
         AND subgames.status = 'playable'
+        AND submissions.id = (SELECT latest.id FROM submissions latest
+          WHERE latest.user_id = submissions.user_id AND latest.subgame_id = submissions.subgame_id
+          ORDER BY latest.created_at DESC, latest.rowid DESC LIMIT 1)
         AND submissions.status IN ('submitted', 'accepted')
         AND (submissions.status = 'accepted' OR ? = 1)`,
   ).bind(userId, Number(autoPass)).all<SubmittedSubgame>();
@@ -89,7 +92,14 @@ export async function recalculateCompletionForUser(userId: string): Promise<Comp
     return submission.subgame_id;
   }))).filter((subgameId): subgameId is string => subgameId !== null));
   for (const subgame of playableSubgames) {
-    if (!qualifyingIds.has(subgame.id)) continue;
+    if (!qualifyingIds.has(subgame.id)) {
+      // A newer draft or requested revision supersedes the previous completion.
+      await env.DB.prepare(`UPDATE subgame_progress SET status = 'in_progress', completed_at = NULL
+        WHERE user_id = ? AND subgame_id = ? AND status = 'completed'
+          AND EXISTS (SELECT 1 FROM submissions WHERE user_id = ? AND subgame_id = ?)`)
+        .bind(userId, subgame.id, userId, subgame.id).run();
+      continue;
+    }
     await env.DB.prepare(
       `INSERT INTO subgame_progress (user_id, subgame_id, status, started_at, last_activity_at, completed_at)
        VALUES (?, ?, 'completed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -108,6 +118,8 @@ export async function recalculateCompletionForUser(userId: string): Promise<Comp
   ).bind(userId).first();
   const needsRevision = await env.DB.prepare(
     `SELECT id FROM submissions WHERE user_id = ? AND status = 'needs_revision'
+      AND id = (SELECT latest.id FROM submissions latest WHERE latest.user_id = submissions.user_id
+        AND latest.subgame_id = submissions.subgame_id ORDER BY latest.created_at DESC, latest.rowid DESC LIMIT 1)
       AND subgame_id IN (${requiredSubgames.map(() => "?").join(",") || "NULL"}) LIMIT 1`,
   ).bind(userId, ...requiredSubgames.map((subgame) => subgame.id)).first();
   const letterEligible = Boolean(allRequiredSubgamesCompleted && user?.email_verified && activeConsent && !needsRevision);

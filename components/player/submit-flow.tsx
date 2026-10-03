@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useAnswerAutosave } from "../../lib/client/use-answer-autosave";
 import { aiChatUploadConsentVersion } from "../../lib/server/research-consent-copy";
 import { InvestigativeAction } from "./investigative-action";
 import { Panel, StatusBadge } from "./panel";
@@ -45,6 +46,7 @@ type SubmissionPayload = {
   requirements: SubmissionRequirements;
   status: string;
   submissionId: string;
+  reviewerNote?: string | null;
   upload: UploadSummary | null;
   uploads: {
     aiChatPdf: UploadSummary | null;
@@ -197,7 +199,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
   const [saving, setSaving] = useState(false);
   const [aiPdfNotice, setAiPdfNotice] = useState("");
   const [researchReady, setResearchReady] = useState<boolean | null>(null);
-  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const { saver, status: answerSaveState, pendingCount } = useAnswerAutosave(setMessage);
   const completedSessions = useRef(new Set<string>());
   const answersRef = useRef<Record<string, unknown>>({});
   const submissionRef = useRef<SubmissionPayload | null>(null);
@@ -233,6 +235,12 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
         ...(result.submission.answerForm?.responses ?? {}),
         ...(result.submission.posttestForm?.responses ?? {}),
       };
+      for (const form of [result.submission.answerForm, result.submission.posttestForm]) {
+        if (!form) continue;
+        if (form.completed) saver.forget(form.sessionId);
+        else Object.assign(initial, saver.restore(form.sessionId, form.questions.map(question => question.id)));
+      }
+      void saver.flush();
       answersRef.current = initial;
       setAnswers(initial);
     } catch {
@@ -240,7 +248,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [saver]);
 
   useEffect(() => {
     void fetch("/api/research-consent/notice", { credentials: "same-origin" })
@@ -261,40 +269,12 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
     if (researchReady && initialSubgameId) void startDraft(initialSubgameId);
   }, [initialSubgameId, researchReady, startDraft]);
 
-  useEffect(() => () => {
-    for (const timer of timers.current.values()) clearTimeout(timer);
-  }, []);
-
-  async function saveAnswer(sessionId: string, questionId: string, value: unknown): Promise<boolean> {
-    try {
-      const response = await fetch(`/api/questionnaire-sessions/${sessionId}/responses`, {
-        body: JSON.stringify({ questionId, value }),
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        method: "PUT",
-      });
-      if (!response.ok) {
-        const result = await response.json().catch(() => ({})) as { code?: string };
-        setMessage(thaiError(result.code ?? ""));
-      }
-      return response.ok;
-    } catch {
-      setMessage("เครือข่ายขัดข้อง คำตอบนี้ยังไม่ได้บันทึก กรุณาลองใหม่");
-      return false;
-    }
-  }
-
   function changeAnswer(sessionId: string, questionId: string, value: unknown) {
     const next = { ...answersRef.current, [questionId]: value };
     answersRef.current = next;
     setAnswers(next);
-    const key = `${sessionId}:${questionId}`;
-    const prior = timers.current.get(key);
-    if (prior) clearTimeout(prior);
-    timers.current.set(key, setTimeout(() => {
-      timers.current.delete(key);
-      void saveAnswer(sessionId, questionId, value);
-    }, 600));
+    setMessage("");
+    saver.enqueue(sessionId, questionId, value);
   }
 
   async function completeForm(form: QuestionForm | null, requiredQuestionKeys: string[] = []): Promise<boolean> {
@@ -308,14 +288,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
       setMessage("กรุณากรอกคำตอบในระบบให้ครบ หรือเลือกส่งไฟล์คำตอบแทน");
       return false;
     }
-    for (const question of form.questions) {
-      const value = answersRef.current[question.id];
-      if (timers.current.has(`${form.sessionId}:${question.id}`)) {
-        clearTimeout(timers.current.get(`${form.sessionId}:${question.id}`));
-        timers.current.delete(`${form.sessionId}:${question.id}`);
-      }
-      if (value !== undefined && !(await saveAnswer(form.sessionId, question.id, value))) return false;
-    }
+    if (!(await saver.flush(form.sessionId))) return false;
     const response = await fetch(`/api/questionnaire-sessions/${form.sessionId}/complete`, {
       credentials: "same-origin",
       method: "POST",
@@ -325,6 +298,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
       return false;
     }
     completedSessions.current.add(form.sessionId);
+    saver.forget(form.sessionId);
     return true;
   }
 
@@ -434,6 +408,12 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
     setSaving(true);
     setMessage("");
     try {
+      for (const form of [current.answerForm, current.posttestForm]) {
+        if (form && !(await saver.flush(form.sessionId))) {
+          setMessage("ยังมีคำตอบค้างบันทึก กรุณาลองอีกครั้งก่อนส่ง");
+          return;
+        }
+      }
       const hasAnswerAttachment = Boolean(current.uploads.answerAttachment);
       if (
         current.requirements.requiresAnswerTextOrAttachment &&
@@ -450,7 +430,11 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
         setMessage(thaiError(result.code ?? ""));
         return;
       }
-      setSubmission((value) => value ? { ...value, status: "submitted" } : value);
+      setSubmission((value) => value ? {
+        ...value, status: "submitted",
+        answerForm: value.answerForm ? { ...value.answerForm, responses: { ...answersRef.current } } : null,
+        posttestForm: value.posttestForm ? { ...value.posttestForm, responses: { ...answersRef.current } } : null,
+      } : value);
       setMessage("ส่งคำตอบแล้ว ระบบบันทึกความคืบหน้าของคุณเรียบร้อย");
     } catch {
       setMessage("ส่งคำตอบไม่ได้ในขณะนี้ ลองอีกครั้งเมื่อเครือข่ายพร้อม");
@@ -513,8 +497,33 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
     );
   }
 
-  if (submission.status === "submitted" || submission.status === "accepted") {
-    return <Panel><StatusBadge>ส่งแล้ว</StatusBadge><h1 className="mt-4 font-display text-3xl text-white">คำตอบของคุณถูกบันทึกแล้ว</h1><p className="mt-3 text-sm leading-6 text-white/70">กลับไปดูความคืบหน้าได้ที่ <Link className="underline" href="/profile">โปรไฟล์</Link></p></Panel>;
+  if (["submitted", "accepted", "needs_revision"].includes(submission.status)) {
+    const needsRevision = submission.status === "needs_revision";
+    return <div className="player-content"><Panel>
+      <StatusBadge>{needsRevision ? "รอแก้ไข" : submission.status === "accepted" ? "ผ่านการตรวจแล้ว" : "ส่งแล้ว"}</StatusBadge>
+      <h1 className="mt-4 font-display text-3xl text-white">{needsRevision ? "มีคำตอบที่ต้องแก้ไข" : "คำตอบของคุณถูกบันทึกแล้ว"}</h1>
+      <p className="mt-3 text-sm leading-6 text-white/70">{caseForSubgameId(subgameId).title} · เลขที่งานส่ง {submission.submissionId}</p>
+      {submission.reviewerNote ? <p className="mt-4 whitespace-pre-wrap border border-white/20 p-4 text-sm leading-6 text-white/85">หมายเหตุจากผู้ดูแล: {submission.reviewerNote}</p> : null}
+      {needsRevision ? <><p className="mt-4 text-sm leading-6 text-white/70">สร้างแบบร่างใหม่จากคำตอบเดิมเพื่อแก้ไข งานที่ส่งครั้งก่อนจะยังเก็บไว้ หากส่งเป็นไฟล์ให้แนบไฟล์ฉบับแก้ไขอีกครั้ง</p><InvestigativeAction className="mt-5" disabled={saving} onClick={() => void (async () => {
+        setSaving(true); setMessage("");
+        try {
+          const response = await fetch(`/api/submissions/${encodeURIComponent(submission.submissionId)}/revise`, { method: "POST", credentials: "same-origin" });
+          if (!response.ok) throw new Error("สร้างแบบร่างแก้ไขไม่ได้ กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง");
+          await startDraft(subgameId);
+        } catch (error) { setMessage(error instanceof Error ? error.message : "เชื่อมต่อไม่ได้"); }
+        finally { setSaving(false); }
+      })()}> {saving ? "กำลังสร้างแบบร่าง…" : "แก้ไขคำตอบ"}</InvestigativeAction></> : null}
+      {message ? <p className="mt-4 text-sm text-red-200" role="alert">{message}</p> : null}
+      <p className="mt-5 text-sm text-white/70"><Link className="underline" href="/profile">ดูความคืบหน้าที่โปรไฟล์</Link></p>
+    </Panel>
+      {[submission.answerForm, submission.posttestForm].filter((form): form is QuestionForm => Boolean(form)).map(form => <Panel key={form.sessionId}><h2 className="font-display text-xl text-white">{form.title}</h2><div className="mt-5 grid gap-4">{form.questions.map((question, index) => {
+        const value = form.responses[question.id];
+        const label = (item: unknown) => choices(question.options).find(option => option.value === item)?.label ?? String(item);
+        const text = value === undefined || value === null ? "ไม่ได้กรอก" : Array.isArray(value) ? value.map(label).join(" · ") : label(value);
+        return <article className="border border-white/15 p-4" key={question.id}><h3 className="text-sm leading-6 text-white/70">Q{String(index + 1).padStart(2, "0")} · {question.promptTh}</h3><p className="mt-3 whitespace-pre-wrap break-words text-sm leading-7 text-white">{text}</p></article>;
+      })}</div></Panel>)}
+      {[submission.uploads.answerAttachment, submission.uploads.aiChatPdf].some(Boolean) ? <Panel><h2 className="font-display text-xl text-white">ไฟล์ที่บันทึกไว้</h2>{[submission.uploads.answerAttachment, submission.uploads.aiChatPdf].map(file => file ? <p className="mt-3 break-words text-sm text-white/75" key={file.id}>{file.original_name} · {formatFileSize(file.bytes)}</p> : null)}</Panel> : null}
+    </div>;
   }
 
   const activeCase = caseForSubgameId(subgameId);
@@ -540,6 +549,10 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
         <p className="text-sm text-white/65">แบบร่างบันทึกอัตโนมัติเมื่อคุณเปลี่ยนคำตอบ</p>
       </header>
       <SubmissionStageRail stages={stages} />
+        <div aria-live="polite" className="player-system-note">
+          <p>{answerSaveState === "error" ? `มีคำตอบค้างบันทึก ${pendingCount} รายการ` : pendingCount ? "กำลังบันทึกคำตอบ…" : answerSaveState === "saved" ? "บันทึกคำตอบล่าสุดแล้ว" : "คำตอบจะบันทึกอัตโนมัติ"}</p>
+          {pendingCount ? <button className="player-button" onClick={() => { setMessage(""); void saver.flush(); }} type="button">บันทึกตอนนี้ / ลองอีกครั้ง</button> : null}
+        </div>
       <section className="player-submission-case" id="submission-stage-case">
         {activeCase.image ? <img alt="" aria-hidden="true" className="player-submission-case-image" src={activeCase.image} /> : null}
         <div className="player-submission-case-content">
