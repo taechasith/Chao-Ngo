@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { useAnswerAutosave } from "../../lib/client/use-answer-autosave";
 import { kaRouteForSubgameId } from "../../lib/ka-casefiles";
 import { Panel, StatusBadge } from "./panel";
 import { GameRulesBrief } from "./game-rules-brief";
@@ -58,6 +59,8 @@ type SessionResponse = {
   };
   responses: Record<string, unknown>;
   sessionId: string;
+  completed?: boolean;
+  recommendation?: Recommendation | null;
 };
 
 type Recommendation = {
@@ -155,7 +158,8 @@ export function OnboardingFlow() {
 
   const sessionIdRef = useRef<string | null>(null);
   const answersRef = useRef<Record<string, unknown>>({});
-  const timersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const { saver, status: autosaveState, pendingCount } = useAnswerAutosave(setMessage);
+  const [initializing, setInitializing] = useState(true);
 
   const questionGroups = useMemo(
     () =>
@@ -166,99 +170,64 @@ export function OnboardingFlow() {
   );
 
   useEffect(() => {
-    void fetch("/api/research-consent/notice", { credentials: "same-origin" })
-      .then(async (response) => (response.ok ? (response.json() as Promise<NoticeResponse>) : null))
-      .then((response) => {
-        if (!response) {
-          setMessage("ไม่สามารถโหลดประกาศข้อมูลส่วนบุคคลได้ในขณะนี้");
-          return;
-        }
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const response = await fetch("/api/research-consent/notice", { credentials: "same-origin", signal: controller.signal });
+        if (!response.ok) throw new Error("ไม่สามารถโหลดประกาศข้อมูลส่วนบุคคลได้ในขณะนี้");
+        const notice = await response.json() as NoticeResponse;
+        setNoticeResponse(notice);
+        if (!notice.collectionEnabled) return;
+        const consentResponse = await fetch("/api/research-consent", { credentials: "same-origin", signal: controller.signal });
+        if (!consentResponse.ok) throw new Error(responseMessage(consentResponse.status));
+        const { consent } = await consentResponse.json() as { consent: { research_participation: number; withdrawn_at: string | null; data_notice_version: string } | null };
+        if (!consent || !consent.research_participation || consent.withdrawn_at || consent.data_notice_version !== notice.notice.dataNoticeVersion) return;
+        setResearchParticipation(true);
+        const existing = await fetch("/api/questionnaires/pregame/sessions", { credentials: "same-origin", signal: controller.signal });
+        if (!existing.ok) throw new Error(responseMessage(existing.status));
+        const payload = await existing.json() as SessionResponse;
+        if (!payload.sessionId) { setStep(-2); return; }
+        loadSession(payload);
+      } catch (error) {
+        if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "ไม่สามารถเชื่อมต่อกับระบบได้ในขณะนี้");
+      } finally { if (!controller.signal.aborted) setInitializing(false); }
+    })();
+    return () => controller.abort();
+    // loadSession reads only the session returned by the server on mount.
+  }, [saver]);
 
-        setNoticeResponse(response);
-      })
-      .catch(() => setMessage("ไม่สามารถเชื่อมต่อกับระบบได้ในขณะนี้"));
-
-    return () => {
-      for (const timer of timersRef.current.values()) {
-        clearTimeout(timer);
-      }
-    };
-  }, []);
-
-  async function saveAnswer(question: QuestionnaireQuestion, value: AnswerValue): Promise<boolean> {
-    const activeSessionId = sessionIdRef.current;
-
-    if (!activeSessionId) {
-      return false;
+  function loadSession(payload: SessionResponse) {
+    sessionIdRef.current = payload.sessionId;
+    const restored = payload.completed ? {} : saver.restore(payload.sessionId, payload.questionnaire.questions.map(question => question.id));
+    const initial = { ...payload.responses, ...restored };
+    answersRef.current = initial;
+    setSessionId(payload.sessionId);
+    setQuestions(payload.questionnaire.questions);
+    setAnswers(initial);
+    if (payload.completed) {
+      saver.forget(payload.sessionId);
+      setRecommendation(payload.recommendation ?? null);
+      // Completed without a recommendation should still offer the case index, not edit a locked form.
+      setStep(-3);
+    } else {
+      const groups = questionGroupStarts.map((start, index) => payload.questionnaire.questions.slice(start, questionGroupStarts[index + 1])).filter(group => group.length);
+      const firstIncomplete = groups.findIndex(group => !group.every(question => isQuestionAnswered(question, initial[question.id])));
+      setStep(firstIncomplete === -1 ? groups.length - 1 : firstIncomplete);
+      void saver.flush(payload.sessionId);
     }
-
-    setSaveState("saving");
-
-    try {
-      const response = await fetch(`/api/questionnaire-sessions/${activeSessionId}/responses`, {
-        body: JSON.stringify({ questionId: question.id, value }),
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        method: "PUT",
-      });
-
-      if (!response.ok) {
-        setSaveState("error");
-        setMessage(responseMessage(response.status));
-        return false;
-      }
-
-      setSaveState("saved");
-      return true;
-    } catch {
-      setSaveState("error");
-      setMessage("เครือข่ายไม่เสถียร ข้อมูลนี้ยังไม่ได้บันทึก");
-      return false;
-    }
-  }
-
-  function scheduleAutosave(question: QuestionnaireQuestion, value: AnswerValue) {
-    const previousTimer = timersRef.current.get(question.id);
-
-    if (previousTimer) {
-      clearTimeout(previousTimer);
-    }
-
-    const timer = setTimeout(() => {
-      timersRef.current.delete(question.id);
-      void saveAnswer(question, value);
-    }, 700);
-
-    timersRef.current.set(question.id, timer);
+    setSaveState("saved");
   }
 
   function updateAnswer(question: QuestionnaireQuestion, value: AnswerValue) {
     const nextAnswers = { ...answersRef.current, [question.id]: value };
     answersRef.current = nextAnswers;
     setAnswers(nextAnswers);
-    scheduleAutosave(question, value);
+    setMessage(null);
+    if (sessionIdRef.current) saver.enqueue(sessionIdRef.current, question.id, value);
   }
 
-  async function flushAnswers(targetQuestions: QuestionnaireQuestion[]): Promise<boolean> {
-    const saves: Promise<boolean>[] = [];
-
-    for (const question of targetQuestions) {
-      const timer = timersRef.current.get(question.id);
-
-      if (timer) {
-        clearTimeout(timer);
-        timersRef.current.delete(question.id);
-      }
-
-      const value = answersRef.current[question.id];
-
-      if (value === null || isAnswerValue(value)) {
-        saves.push(saveAnswer(question, value));
-      }
-    }
-
-    const results = await Promise.all(saves);
-    return results.every(Boolean);
+  async function flushAnswers(): Promise<boolean> {
+    return sessionIdRef.current ? saver.flush(sessionIdRef.current) : false;
   }
 
   async function startQuestionnaire() {
@@ -273,7 +242,7 @@ export function OnboardingFlow() {
     setSaveState("saving");
 
     try {
-      const consentResponse = await fetch("/api/research-consent", {
+      const consentResponse = step === -2 ? null : await fetch("/api/research-consent", {
         body: JSON.stringify({
           aiChatUploadConsent: false,
           consentVersion: notice.consentVersion,
@@ -285,7 +254,7 @@ export function OnboardingFlow() {
         method: "POST",
       });
 
-      if (!consentResponse.ok) {
+      if (consentResponse && !consentResponse.ok) {
         setSaveState("error");
         setMessage(responseMessage(consentResponse.status));
         return;
@@ -303,13 +272,7 @@ export function OnboardingFlow() {
       }
 
       const payload = (await sessionResponse.json()) as SessionResponse;
-      sessionIdRef.current = payload.sessionId;
-      answersRef.current = payload.responses;
-      setSessionId(payload.sessionId);
-      setQuestions(payload.questionnaire.questions);
-      setAnswers(payload.responses);
-      setSaveState("saved");
-      setStep(0);
+      loadSession(payload);
     } catch {
       setSaveState("error");
       setMessage("เครือข่ายไม่เสถียร ยังไม่สามารถเริ่มแบบสอบถามได้");
@@ -326,7 +289,7 @@ export function OnboardingFlow() {
 
     setMessage(null);
 
-    if (!(await flushAnswers(currentGroup))) {
+    if (!(await flushAnswers())) {
       return;
     }
 
@@ -341,7 +304,7 @@ export function OnboardingFlow() {
 
     setMessage(null);
 
-    if (!(await flushAnswers(questions))) {
+    if (!(await flushAnswers())) {
       return;
     }
 
@@ -360,6 +323,7 @@ export function OnboardingFlow() {
       }
 
       const payload = (await response.json()) as { recommendation: Recommendation };
+      saver.forget(sessionId);
       setRecommendation(payload.recommendation);
       setSaveState("saved");
       setStep(questionGroups.length);
@@ -369,7 +333,7 @@ export function OnboardingFlow() {
     }
   }
 
-  if (!noticeResponse) {
+  if (!noticeResponse || initializing) {
     return (
       <Panel className="max-w-xl" tone="quiet">
         <p role="status" className="text-sm text-white/70">{message || "กำลังเตรียมข้อมูลก่อนเริ่มเล่น…"}</p>
@@ -406,6 +370,8 @@ export function OnboardingFlow() {
     );
   }
 
+  if (recommendation) return <RecommendationResult recommendation={recommendation} />;
+  if (step === -3) return <Panel><h1>บันทึกข้อมูลก่อนเริ่มเล่นแล้ว</h1><Link className="player-button mt-4" href="/play">เปิดแฟ้มคดี</Link></Panel>;
   if (step < 0) {
     return (
       <div className="player-onboarding">
@@ -428,6 +394,7 @@ export function OnboardingFlow() {
             <label className="player-consent-control">
             <input
               checked={researchParticipation}
+              disabled={step === -2}
               onChange={(event) => setResearchParticipation(event.target.checked)}
               type="checkbox"
             />
@@ -440,7 +407,7 @@ export function OnboardingFlow() {
             onClick={() => void startQuestionnaire()}
             type="button"
           >
-              ยินยอมและไปต่อ
+              {step === -2 ? "ไปต่อ" : "ยินยอมและไปต่อ"}
           </InvestigativeAction>
             <Link className="player-text-action" href="/play">กลับไปที่แฟ้มคดี</Link>
           </aside>
@@ -480,7 +447,8 @@ export function OnboardingFlow() {
             />
           ))}
         </div>
-        <FlowMessage message={message} saveState={saveState} />
+        <FlowMessage message={message} saveState={pendingCount ? autosaveState : saveState} />
+        {pendingCount ? <button className="player-button mt-3" onClick={() => { setMessage(null); void flushAnswers(); }} type="button">บันทึกคำตอบที่ค้าง / ลองอีกครั้ง</button> : null}
         <div className="mt-8 flex flex-wrap justify-between gap-3">
           <button
             className="player-button"

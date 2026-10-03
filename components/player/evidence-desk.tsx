@@ -6,6 +6,8 @@ import { gsap } from "gsap";
 import type { PlayerEvidence, PlayerTimelineNode } from "../../lib/server/content/player-evidence";
 import { HelpButton } from "./help-button";
 import { PlayerDialog } from "./player-dialog";
+import { recordGameActivity } from "../../lib/client/game-session";
+import { PdfEvidenceViewer } from "./pdf-evidence-viewer";
 
 const defaultNodeLabels: Record<string, string> = {
   "pre-case": "ก่อนคดี", quantum: "คดีควอนตัม", space: "คดีอวกาศ", "post-case": "บันทึกหลังคดี",
@@ -51,6 +53,16 @@ export function EvidenceDesk({
   }) ?? [];
   const visibleFiles = showAll ? filteredFiles : filteredFiles.slice(0, 6);
 
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("evidence");
+    const target = id && nodes?.find(item => item.files.some(asset => asset.id === id));
+    if (!target || !id) return;
+    setSelectedSlug(target.slug);
+    setVisited(previous => new Set(previous).add(target.slug));
+    setActiveFile(id);
+    setOpened(previous => new Set(previous).add(id));
+  }, [nodes]);
+
   useLayoutEffect(() => {
     if (!lineRef.current || ["off", "reduce"].includes(document.documentElement.dataset.motion ?? "") || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const context = gsap.context(() => {
@@ -68,16 +80,8 @@ export function EvidenceDesk({
   function recordActivity(input: { assetId: string; eventType: "evidence_opened" } | { eventType: "timeline_node_opened"; timelineNodeId: string }) {
     const activitySubgameId = subgameId ?? (initialSlug === "quantum" || initialSlug === "space" ? `subgame-node-zone-${initialSlug}` : null);
     if (!activitySubgameId) return;
-    let sessionId: string | null;
-    try { sessionId = window.sessionStorage.getItem(`jao-ngoh-session:${activitySubgameId}`); } catch { return; }
-    if (!sessionId) return;
-    const eventId = crypto.randomUUID();
-    void fetch(`/api/player-sessions/${sessionId}/activity-events`, {
-      body: JSON.stringify({ ...input, eventId }),
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    }).catch(() => undefined);
+    const gameId = activitySubgameId.startsWith("subgame-ka-") ? "game-ka-casefiles" : "game-node-zone";
+    void recordGameActivity(gameId, activitySubgameId, input);
   }
 
   return (
@@ -163,7 +167,6 @@ function EvidenceContent({ file }: { file: PlayerEvidence }) {
   const [error, setError] = useState(false);
   const [text, setText] = useState<string | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [canEmbedPdf, setCanEmbedPdf] = useState(true);
   const [attempt, setAttempt] = useState(0);
   const imageViewport = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
@@ -171,7 +174,6 @@ function EvidenceContent({ file }: { file: PlayerEvidence }) {
   function resetImage() { setZoom(1); if (imageViewport.current) imageViewport.current.scrollTo(0, 0); }
 
   useEffect(() => {
-    setCanEmbedPdf(navigator.pdfViewerEnabled !== false);
     if (!file.url || (file.kind !== "text" && file.kind !== "pdf")) return;
     const controller = new AbortController();
     let objectUrl: string | undefined;
@@ -215,7 +217,7 @@ function EvidenceContent({ file }: { file: PlayerEvidence }) {
         {/* Evidence retains its original colors and proportions. */}
         <img draggable={false} alt={file.title} onError={() => setError(true)} src={file.url} style={{ width: `${zoom * 100}%` }} />
       </div>
-    </> : file.kind === "pdf" ? pdfUrl ? <><div className="player-pdf-fallback"><span>หากเอกสารไม่แสดง เปิดแท็บใหม่หรือดาวน์โหลดเพื่ออ่าน</span><a href={pdfUrl} className="player-text-action" rel="noopener noreferrer" target="_blank">เปิด PDF ↗</a><a href={pdfUrl} className="player-text-action" download={`${file.title}.pdf`}>ดาวน์โหลด</a></div>{canEmbedPdf ? <iframe title={file.title} className="player-pdf-viewer" src={pdfUrl} /> : <div className="player-evidence-unavailable"><FileText aria-hidden="true" size={40} /><h3>อ่านเอกสารด้วยโปรแกรม PDF</h3><p>เบราว์เซอร์นี้ไม่รองรับการแสดง PDF ในหน้าเว็บ ดาวน์โหลดไฟล์เพื่อเปิดอ่านได้</p><a className="player-button" download={`${file.title}.pdf`} href={pdfUrl}>ดาวน์โหลด PDF</a></div>}</> : <p className="player-viewer-loading" role="status">กำลังเปิดเอกสาร…</p>
+    </> : file.kind === "pdf" ? pdfUrl ? <><div className="player-pdf-fallback"><span>หากเอกสารไม่แสดง เปิดแท็บใหม่หรือดาวน์โหลดเพื่ออ่าน</span><a href={pdfUrl} className="player-text-action" rel="noopener noreferrer" target="_blank">เปิด PDF ↗</a><a href={pdfUrl} className="player-text-action" download={`${file.title}.pdf`}>ดาวน์โหลด</a></div><PdfEvidenceViewer url={pdfUrl} title={file.title} /></> : <p className="player-viewer-loading" role="status">กำลังเปิดเอกสาร…</p>
       : file.kind === "text" ? text === null ? <p className="player-viewer-loading" role="status">กำลังเปิดบันทึก…</p> : <pre className="player-record-text" tabIndex={0}>{text}</pre>
         : file.kind === "audio" ? <div className="player-media-viewer"><Volume2 aria-hidden="true" size={48} strokeWidth={1} /><audio aria-label={file.title} controls onError={() => setError(true)} preload="metadata" src={file.url} /></div>
           : file.kind === "video" ? <video aria-label={file.title} className="player-video-viewer" controls onError={() => setError(true)} playsInline preload="metadata" src={file.url} />

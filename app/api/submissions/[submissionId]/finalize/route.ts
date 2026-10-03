@@ -174,6 +174,10 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
       JSON.stringify({ instrumentVersion: requirements.instrumentVersion }),
       submission.subgame_id,
     ),
+    env.DB.prepare(`UPDATE questionnaire_sessions SET closed_at = COALESCE(closed_at, CURRENT_TIMESTAMP)
+      WHERE user_id = ? AND completed_at IS NULL AND id IN (?, ?)
+      AND EXISTS (SELECT 1 FROM submissions WHERE id = ? AND user_id = ? AND status = 'submitted')`)
+      .bind(participant.userId, submission.questionnaire_session_id, submission.posttest_session_id, submissionId, participant.userId),
   ]);
 
   if ((results[0]?.meta.changes ?? 0) === 0) return response({ code: "SUBMISSION_ALREADY_FINALIZED" }, 409);

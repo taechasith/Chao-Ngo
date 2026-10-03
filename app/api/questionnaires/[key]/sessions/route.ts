@@ -70,7 +70,7 @@ async function getActiveSession(userId: string, questionnaireId: string) {
   return env.DB.prepare(
     `SELECT id
        FROM questionnaire_sessions
-      WHERE user_id = ? AND questionnaire_id = ? AND completed_at IS NULL
+      WHERE user_id = ? AND questionnaire_id = ? AND completed_at IS NULL AND closed_at IS NULL
       ORDER BY started_at DESC
       LIMIT 1`,
   )
@@ -112,6 +112,20 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
     return noStoreResponse({ code: "QUESTIONNAIRE_NOT_FOUND" }, 404);
   }
 
+  const session = await env.DB.prepare(
+    `SELECT id, completed_at FROM questionnaire_sessions
+      WHERE user_id = ? AND questionnaire_id = ?
+      ORDER BY (completed_at IS NULL AND closed_at IS NULL) DESC, started_at DESC, id DESC LIMIT 1`,
+  ).bind(participant.userId, questionnaire.id).first<{ id: string; completed_at: string | null }>();
+  let recommendation = null;
+  if (session?.completed_at && key === "pregame") {
+    const stored = await env.DB.prepare("SELECT recommended_subgame_id, score_json FROM recommendation_results WHERE questionnaire_session_id = ?")
+      .bind(session.id).first<{ recommended_subgame_id: string; score_json: string }>();
+    if (stored) {
+      const scores = JSON.parse(stored.score_json) as { candidates?: Array<{ subgameId: string; components: unknown }> };
+      recommendation = scores.candidates?.find(item => item.subgameId === stored.recommended_subgame_id) ?? null;
+    }
+  }
   return noStoreResponse({
     questionnaire: {
       id: questionnaire.id,
@@ -120,6 +134,10 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
       title: questionnaire.title,
       version: questionnaire.version,
     },
+    completed: Boolean(session?.completed_at),
+    recommendation,
+    responses: session ? await getSavedResponses(session.id) : {},
+    sessionId: session?.id ?? null,
   });
 }
 

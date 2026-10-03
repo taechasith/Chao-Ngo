@@ -24,3 +24,6 @@ FRONTEND_PHASE_GUIDE(4).md
 /ChatGPT Image Sep 19, 2026, 01_24_59 AM.png
 /Screenshot 2026-09-19 061759.png
 /low_poly_covered_corpse.glb
+
+# PDF.js assets are copied from the pinned dependency at dev/build time.
+/public/pdfjs/
