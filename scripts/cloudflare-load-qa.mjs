@@ -1,5 +1,5 @@
 import {readFile,writeFile,mkdir,readdir} from 'node:fs/promises';
-import {spawnSync} from 'node:child_process';
+import {spawn,spawnSync} from 'node:child_process';
 import {randomUUID,randomBytes,createHmac,createHash} from 'node:crypto';
 import {performance} from 'node:perf_hooks';
 const account='c24fed68f8dc59cc339bd821d215bba8',api='https://api.cloudflare.com/client/v4';
@@ -7,7 +7,8 @@ const run=process.env.GITHUB_RUN_ID||'manual';
 if(!/^\d+$/.test(run))throw new Error('Run only from GitHub Actions');
 const name=`chao-ngo-qa-${run}`,dbName=name,bucketName=name;
 const report={scope:'Remote Cloudflare Worker/D1/R2, unchanged production application code, real Better Auth session verification; synthetic QA identities, NOT 300 Google OAuth logins',source:process.env.GITHUB_SHA,run,startedAt:new Date().toISOString(),phases:[],requests:[],resources:{worker:name,database:dbName,bucket:bucketName},cleanup:[]};
-let dbId,origin,createdWorker=false,createdBucket=false,users=[],uploads=[];
+let dbId,origin,createdWorker=false,createdBucket=false,users=[],uploads=[],tailProcess;
+report.cloudflareExceptions=[];
 const secret=randomBytes(48).toString('base64url');
 console.log(`::add-mask::${secret}`);
 await mkdir('qa-results',{recursive:true});
@@ -24,14 +25,16 @@ let inflight=0,peak=0;
 async function request(user,path,method='GET',body){
  const begin=performance.now();inflight++;peak=Math.max(peak,inflight);
  try {const r=await fetch(origin+path,{method,headers:{Origin:origin,...(user?{Cookie:user.cookie}:{}),...(body&&!(body instanceof FormData)?{'Content-Type':'application/json'}:{})},body:body instanceof FormData?body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(45000)});
- const raw=await r.text();const payload=(()=>{try{return JSON.parse(raw)}catch{return null}})();report.requests.push({phase:report.phase,user:user?.id,path:path.replace(/[a-f0-9-]{36}/g,':id'),status:r.status,ms:Math.round(performance.now()-begin),code:payload?.code,...(r.status===404?{diagnostic:raw.slice(0,220),contentType:r.headers.get('content-type')}: {})});return {status:r.status,body:payload};}
+ const raw=await r.text();const payload=(()=>{try{return JSON.parse(raw)}catch{return null}})();report.requests.push({phase:report.phase,user:user?.id,path:path.replace(/[a-f0-9-]{36}/g,':id'),status:r.status,ms:Math.round(performance.now()-begin),code:payload?.code,...([404,500].includes(r.status)?{diagnostic:raw.slice(0,220),contentType:r.headers.get('content-type')}: {})});return {status:r.status,body:payload};}
  catch(e){report.requests.push({phase:report.phase,user:user?.id,status:'network-error',ms:Math.round(performance.now()-begin),error:e.name});throw new Error(e.name);}
  finally{inflight--;}
 }
 function check(value,expected,label){if(value!==expected)throw new Error(`${label}: expected ${expected}, got ${value}`);}
 function pct(xs,p){return [...xs].sort((a,b)=>a-b)[Math.ceil(xs.length*p)-1]||0;}
-async function phase(name,pool,work){report.phase=name;peak=0;const begin=performance.now(),durations=[],errors=[];await Promise.all(pool.map(async user=>{const t=performance.now();try{await work(user);}catch(e){errors.push({user:user.id,error:e.message});}durations.push(Math.round(performance.now()-t));}));const row={name,users:pool.length,successful:pool.length-errors.length,errors,elapsedMs:Math.round(performance.now()-begin),peakHttpInflight:peak,p50Ms:pct(durations,.5),p95Ms:pct(durations,.95),p99Ms:pct(durations,.99)};report.phases.push(row);console.log(JSON.stringify(row));await persist();if(errors.length)throw new Error(`${name} failed for ${errors.length} users`);}
+async function phase(name,pool,work){report.phase=name;peak=0;const begin=performance.now(),durations=[],errors=[];await Promise.all(pool.map(async user=>{const t=performance.now();try{await work(user);}catch(e){errors.push({user:user.id,error:e.message});}durations.push(Math.round(performance.now()-t));}));const row={name,users:pool.length,successful:pool.length-errors.length,errors,elapsedMs:Math.round(performance.now()-begin),peakHttpInflight:peak,p50Ms:pct(durations,.5),p95Ms:pct(durations,.95),p99Ms:pct(durations,.99)};report.phases.push(row);console.log(JSON.stringify(row));await persist();if(errors.length){report.partialFailure=true;users=users.filter(u=>!errors.some(e=>e.user===u.id));if(!users.length)throw new Error(`${name} failed for all users`);}}
 try{
+ // This bucket contains no uploads: the prior run stopped at draft creation and its D1/worker were removed.
+ await cf(`/accounts/${account}/r2/buckets/chao-ngo-qa-37225183463`,'DELETE');report.cleanup.push({resource:'empty orphan QA bucket 37225183463',status:'removed'});
  const subdomain=(await cf(`/accounts/${account}/workers/subdomain`)).subdomain;
  if(!subdomain)throw new Error('Existing workers.dev subdomain unavailable');origin=`https://${name}.${subdomain}.workers.dev`;report.origin=origin;
  dbId=(await cf(`/accounts/${account}/d1/database`,'POST',{name:dbName,primary_location_hint:'apac'})).uuid;report.resources.databaseId=dbId;await persist();
@@ -53,6 +56,8 @@ try{
  // Secret upload creates only the new QA worker; never modify production secrets.
  cli(['secret','put','BETTER_AUTH_SECRET','--config','dist/server/wrangler.qa.json'],secret+'\n');createdWorker=true;
  cli(['deploy','--config','dist/server/wrangler.qa.json']);
+ tailProcess=spawn(process.execPath,['node_modules/wrangler/bin/wrangler.js','tail','--format','json','--config','dist/server/wrangler.qa.json'],{env:process.env,stdio:['ignore','pipe','ignore']});
+ let tailBuffer='';tailProcess.stdout.on('data',chunk=>{tailBuffer+=chunk.toString();let pos;while((pos=tailBuffer.indexOf('\n'))>=0){const line=tailBuffer.slice(0,pos);tailBuffer=tailBuffer.slice(pos+1);try{const event=JSON.parse(line);for(const ex of event.exceptions||[]){if(report.cloudflareExceptions.length<30)report.cloudflareExceptions.push({name:ex.name,message:String(ex.message).slice(0,500)});}}catch{}}});
  // Allow the new worker to become available; bounded readiness, not counted as load.
  for(let i=0;i<12;i++){const r=await request(null,'/api/submissions');if(r.status===401)break;if(i===11)throw new Error('QA endpoint not ready');await new Promise(r=>setTimeout(r,2000));}
  // Record a 30-second propagation/warm-up window before measured traffic. No measured failure is retried.
@@ -89,15 +94,16 @@ try{
  await phase('300 concurrent finalizations and receipt reads',users,async u=>{check((await request(u,`/api/submissions/${u.draft.submissionId}/finalize`,'POST')).status,201,'finalize');const r=await request(u,'/api/submissions?subgameId=subgame-ka-fintech');check(r.status,200,'receipt');check(r.body.submission.status,'submitted','status');check(r.body.submission.submissionId,u.draft.submissionId,'receipt owner');});
  await phase('300 concurrent repeated finalize requests',users,async u=>check((await request(u,`/api/submissions/${u.draft.submissionId}/finalize`,'POST')).status,200,'idempotent retry'));
  const counts=(await query("SELECT (SELECT COUNT(*) FROM submissions WHERE status='submitted') AS submitted,(SELECT COUNT(*) FROM responses) AS responses,(SELECT COUNT(*) FROM uploads WHERE status='uploaded') AS uploaded,(SELECT COUNT(*) FROM activity_events WHERE event_type='submission_finalized') AS finalized_events,(SELECT COUNT(*) FROM submissions s JOIN questionnaire_sessions qs ON qs.id=s.questionnaire_session_id WHERE s.user_id!=qs.user_id) AS foreign_sessions,(SELECT COUNT(*) FROM responses r JOIN questionnaire_sessions qs ON qs.id=r.session_id WHERE r.value_json LIKE '%CLOUDFLARE QA%' AND r.value_json NOT LIKE '%'||qs.user_id||'%') AS foreign_answers"))[0];
- check(counts.submitted,300,'DB submissions');check(counts.responses,2400,'DB responses');check(counts.uploaded,300,'DB uploads');check(counts.finalized_events,300,'DB finalization events');check(counts.foreign_sessions,0,'foreign sessions');check(counts.foreign_answers,0,'foreign answers');report.integrity={counts};
+ check(counts.submitted,users.length,'DB submissions');check(counts.responses,users.length*8,'DB responses');check(counts.uploaded,users.length,'DB uploads');check(counts.finalized_events,users.length,'DB finalization events');check(counts.foreign_sessions,0,'foreign sessions');check(counts.foreign_answers,0,'foreign answers');report.integrity={counts};
  uploads=await query('SELECT id,user_id,private_r2_key,sha256,bytes FROM uploads');
  await phase('300 concurrent R2 byte verification through management API',users,async u=>{const upload=uploads.find(x=>x.id===u.uploadId);const r=await fetch(`${api}/accounts/${account}/r2/buckets/${bucketName}/objects/${upload.private_r2_key}`,{headers:{Authorization:`Bearer ${process.env.CLOUDFLARE_API_TOKEN}`},signal:AbortSignal.timeout(45000)});check(r.status,200,'R2 read');check(await r.text(),u.content,'R2 bytes');check(upload.sha256,createHash('sha256').update(u.content).digest('hex'),'R2 checksum');});
- report.integrity.filesByteVerified=300;report.status='pass';
+ report.integrity.filesByteVerified=users.length;report.status=report.partialFailure?'failed':'pass';if(report.partialFailure){report.failure='Measured phase failures; subsequent phases only cover surviving users';process.exitCode=1;}
 }catch(e){report.status='failed';report.failure=e.message;console.error(e.message);process.exitCode=1;}
 finally{
+ tailProcess?.kill();
  await persist();
  // Cleanup only resources created with this exact run name; no production identifiers.
- if(createdBucket){try{if(dbId)uploads=await query('SELECT private_r2_key FROM uploads');for(let off=0;off<uploads.length;off+=20)await Promise.all(uploads.slice(off,off+20).map(async u=>{const r=await fetch(`${api}/accounts/${account}/r2/buckets/${bucketName}/objects/${u.private_r2_key}`,{method:'DELETE',headers:{Authorization:`Bearer ${process.env.CLOUDFLARE_API_TOKEN}`}});if(!r.ok)throw new Error(`object cleanup ${r.status}`);}));await cf(`/accounts/${account}/r2/buckets/${bucketName}`,'DELETE');report.cleanup.push({resource:'qa bucket',status:'removed'});}catch(e){report.cleanup.push({resource:'qa bucket',status:'failed',error:e.message});}}
+ if(createdBucket){try{if(dbId){try{uploads=await query('SELECT private_r2_key FROM uploads');}catch(e){report.cleanup.push({resource:'qa object inventory',status:'failed',error:e.message});}}for(let off=0;off<uploads.length;off+=20)await Promise.all(uploads.slice(off,off+20).map(async u=>{const r=await fetch(`${api}/accounts/${account}/r2/buckets/${bucketName}/objects/${u.private_r2_key}`,{method:'DELETE',headers:{Authorization:`Bearer ${process.env.CLOUDFLARE_API_TOKEN}`}});if(!r.ok)throw new Error(`object cleanup ${r.status}`);}));await cf(`/accounts/${account}/r2/buckets/${bucketName}`,'DELETE');report.cleanup.push({resource:'qa bucket',status:'removed'});}catch(e){report.cleanup.push({resource:'qa bucket',status:'failed',error:e.message});}}
  if(createdWorker){try{await cf(`/accounts/${account}/workers/scripts/${name}`,'DELETE');report.cleanup.push({resource:'qa worker',status:'removed'});}catch(e){report.cleanup.push({resource:'qa worker',status:'failed',error:e.message});}}
  if(dbId){try{await cf(`/accounts/${account}/d1/database/${dbId}`,'DELETE');report.cleanup.push({resource:'qa database',status:'removed'});}catch(e){report.cleanup.push({resource:'qa database',status:'failed',error:e.message});}}
  report.finishedAt=new Date().toISOString();delete report.phase;await persist();
