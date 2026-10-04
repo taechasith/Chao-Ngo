@@ -5,7 +5,7 @@ export class RequestAdmission {
   private active = 0;
   private waiting: Array<{ start: () => void; timer: ReturnType<typeof setTimeout> }> = [];
 
-  constructor(private limit = 12, private maximumWaiting = 512, private timeoutMs = 30_000) {}
+  constructor(private limit = 20, private maximumWaiting = 512, private timeoutMs = 60_000) {}
 
   private acquire(): Promise<void> {
     if (this.active < this.limit) {
