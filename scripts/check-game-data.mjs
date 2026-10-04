@@ -31,6 +31,8 @@ for (const query of queries) {
       : /no such table/i.test(output) ? "A required table is missing"
       : "D1 query failed";
     console.error(`Read-only game data check ${results.length + 1} failed: ${reason}; no data was changed.`);
+    // Only SQL error lines from these fixed aggregate queries, never result bodies.
+    for (const line of output.split("\n").filter(line => /D1_ERROR|SQLITE|\[ERROR\]|syntax error/i.test(line))) console.error(line);
     process.exit(1);
   }
   try { results.push(JSON.parse(command.stdout)); }
