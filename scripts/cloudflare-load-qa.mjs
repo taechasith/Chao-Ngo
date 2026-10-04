@@ -57,7 +57,7 @@ try{
  cli(['deploy','--config','dist/server/wrangler.qa.json']);
  tailProcess=spawn(process.execPath,['node_modules/wrangler/bin/wrangler.js','tail','--format','json','--config','dist/server/wrangler.qa.json'],{env:process.env,stdio:['ignore','pipe','ignore']});
  let tailBuffer='',tailJson='';report.tailEvents=0;
- const captureTail=event=>{report.tailEvents++;for(const ex of event.exceptions||[]){if(report.cloudflareExceptions.length<30)report.cloudflareExceptions.push({name:ex.name,message:String(ex.message).slice(0,500)});}for(const log of event.logs||[]){const msg=(log.message||[]).join(' ');if(/D1(?:_| transient)|SQLITE|overload|queue|exceeded/i.test(msg)&&report.cloudflareExceptions.length<30)report.cloudflareExceptions.push({name:log.level,message:msg.slice(0,500)});}};
+ const captureTail=event=>{report.tailEvents++;for(const ex of event.exceptions||[]){if(report.cloudflareExceptions.length<30)report.cloudflareExceptions.push({name:ex.name,message:String(ex.message).slice(0,500)});}for(const log of event.logs||[]){const msg=(log.message||[]).join(' ');if(/D1(?:_| transient| queue| connection)|SQLITE|overload|queue|exceeded/i.test(msg)&&report.cloudflareExceptions.length<30)report.cloudflareExceptions.push({name:log.level,message:msg.slice(0,500)});}};
  tailProcess.stdout.on('data',chunk=>{tailBuffer+=chunk.toString();let pos;while((pos=tailBuffer.indexOf('\n'))>=0){const line=tailBuffer.slice(0,pos);tailBuffer=tailBuffer.slice(pos+1);if(line==='{'||tailJson){tailJson+=line+'\n';if(line==='}'){try{captureTail(JSON.parse(tailJson));}catch{}tailJson='';}}else{try{captureTail(JSON.parse(line));}catch{}}}});
  // Allow the new worker to become available; bounded readiness, not counted as load.
  for(let i=0;i<12;i++){const r=await request(null,'/api/submissions');if(r.status===401)break;if(i===11)throw new Error('QA endpoint not ready');await new Promise(r=>setTimeout(r,2000));}
@@ -65,7 +65,7 @@ try{
  report.phase='deployment propagation warmup';
  for(let round=0;round<6;round++){await Promise.all(Array.from({length:5},()=>request(null,'/api/submissions')));await new Promise(r=>setTimeout(r,5000));}
  delete report.phase;
- const unauth=await request(null,'/api/submissions');check(unauth.status,401,'Unauthenticated guard');
+ const unauth=await request(null,'/api/submissions');check(unauth.status,401,'Unauthenticated guard');check((await request(null,'/api/submissions/00000000-0000-4000-8000-000000000000/finalize','POST')).status,401,'Coordinator auth guard');
  const sanity=await request(users[0],'/api/auth/get-session');check(sanity.status,200,'Signed session sanity status');check(sanity.body?.user?.id,users[0].id,'Signed session sanity identity');
  await phase('300 concurrent start/resume draft',users,async u=>{const r=await request(u,'/api/submissions','POST',{subgameId:'subgame-ka-fintech'});check(r.status,201,'start');u.draft=r.body.submission;});
  await phase('300 concurrent players autosave 8 answers and read them back',users,async(u)=>{
@@ -112,7 +112,7 @@ finally{
  await persist();
  // Cleanup only resources created with this exact run name; no production identifiers.
  if(createdBucket){try{if(dbId){try{uploads=await query('SELECT private_r2_key FROM uploads');}catch(e){report.cleanup.push({resource:'qa object inventory',status:'failed',error:e.message});}}for(let off=0;off<uploads.length;off+=20)await Promise.all(uploads.slice(off,off+20).map(async u=>{const r=await fetch(`${api}/accounts/${account}/r2/buckets/${bucketName}/objects/${u.private_r2_key}`,{method:'DELETE',headers:{Authorization:`Bearer ${process.env.CLOUDFLARE_API_TOKEN}`}});if(!r.ok)throw new Error(`object cleanup ${r.status}`);}));await cf(`/accounts/${account}/r2/buckets/${bucketName}`,'DELETE');report.cleanup.push({resource:'qa bucket',status:'removed'});}catch(e){report.cleanup.push({resource:'qa bucket',status:'failed',error:e.message});}}
- if(createdWorker){try{await cf(`/accounts/${account}/workers/scripts/${name}`,'DELETE');report.cleanup.push({resource:'qa worker',status:'removed'});}catch(e){report.cleanup.push({resource:'qa worker',status:'failed',error:e.message});}}
+ if(createdWorker){try{await cf(`/accounts/${account}/workers/scripts/${name}?force=true`,'DELETE');report.cleanup.push({resource:'qa worker',status:'removed'});}catch(e){report.cleanup.push({resource:'qa worker',status:'failed',error:e.message});}}
  if(dbId){try{await cf(`/accounts/${account}/d1/database/${dbId}`,'DELETE');report.cleanup.push({resource:'qa database',status:'removed'});}catch(e){report.cleanup.push({resource:'qa database',status:'failed',error:e.message});}}
  report.finishedAt=new Date().toISOString();delete report.phase;await persist();
 }
