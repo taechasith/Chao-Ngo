@@ -24,7 +24,7 @@ let inflight=0,peak=0;
 async function request(user,path,method='GET',body){
  const begin=performance.now();inflight++;peak=Math.max(peak,inflight);
  try {const r=await fetch(origin+path,{method,headers:{Origin:origin,...(user?{Cookie:user.cookie}:{}),...(body&&!(body instanceof FormData)?{'Content-Type':'application/json'}:{})},body:body instanceof FormData?body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(45000)});
- const payload=await r.json().catch(()=>null);report.requests.push({phase:report.phase,user:user?.id,path:path.replace(/[a-f0-9-]{36}/g,':id'),status:r.status,ms:Math.round(performance.now()-begin),code:payload?.code});return {status:r.status,body:payload};}
+ const raw=await r.text();const payload=(()=>{try{return JSON.parse(raw)}catch{return null}})();report.requests.push({phase:report.phase,user:user?.id,path:path.replace(/[a-f0-9-]{36}/g,':id'),status:r.status,ms:Math.round(performance.now()-begin),code:payload?.code,...(r.status===404?{diagnostic:raw.slice(0,220),contentType:r.headers.get('content-type')}: {})});return {status:r.status,body:payload};}
  catch(e){report.requests.push({phase:report.phase,user:user?.id,status:'network-error',ms:Math.round(performance.now()-begin),error:e.name});throw new Error(e.name);}
  finally{inflight--;}
 }
@@ -55,6 +55,10 @@ try{
  cli(['deploy','--config','dist/server/wrangler.qa.json']);
  // Allow the new worker to become available; bounded readiness, not counted as load.
  for(let i=0;i<12;i++){const r=await request(null,'/api/submissions');if(r.status===401)break;if(i===11)throw new Error('QA endpoint not ready');await new Promise(r=>setTimeout(r,2000));}
+ // Record a 30-second propagation/warm-up window before measured traffic. No measured failure is retried.
+ report.phase='deployment propagation warmup';
+ for(let round=0;round<6;round++){await Promise.all(Array.from({length:5},()=>request(null,'/api/submissions')));await new Promise(r=>setTimeout(r,5000));}
+ delete report.phase;
  const unauth=await request(null,'/api/submissions');check(unauth.status,401,'Unauthenticated guard');
  const sanity=await request(users[0],'/api/auth/get-session');check(sanity.status,200,'Signed session sanity status');check(sanity.body?.user?.id,users[0].id,'Signed session sanity identity');
  await phase('300 concurrent start/resume draft',users,async u=>{const r=await request(u,'/api/submissions','POST',{subgameId:'subgame-ka-fintech'});check(r.status,201,'start');u.draft=r.body.submission;});
@@ -62,6 +66,14 @@ try{
  for(const question of u.draft.answerForm.questions){const value=question.key==='submission_mode'?'text':`[CLOUDFLARE QA] ${u.id}: ${question.key}`;check((await request(u,`/api/questionnaire-sessions/${u.draft.answerForm.sessionId}/responses`,'PUT',{questionId:question.id,value})).status,200,'save');}
  const r=await request(u,'/api/submissions?subgameId=subgame-ka-fintech');check(r.status,200,'read');check(r.body.submission.submissionId,u.draft.submissionId,'owner submission');for(const question of u.draft.answerForm.questions){check(r.body.submission.answerForm.responses[question.id],question.key==='submission_mode'?'text':`[CLOUDFLARE QA] ${u.id}: ${question.key}`,'stored answer');}
  });
+ await phase('300 concurrent reconnect reads',users,async u=>{const r=await request(u,'/api/submissions?subgameId=subgame-ka-fintech');check(r.status,200,'reconnect read');check(r.body.submission.submissionId,u.draft.submissionId,'same draft');for(const question of u.draft.answerForm.questions){check(r.body.submission.answerForm.responses[question.id],question.key==='submission_mode'?'text':`[CLOUDFLARE QA] ${u.id}: ${question.key}`,'reconnected answer');}});
+ // A real remote DB session expiry and fresh signed session, only for disposable QA identities.
+ await query(`UPDATE session SET expiresAt=${Date.now()-60000}`);
+ await phase('300 expired sessions rejected',users,async u=>check((await request(u,'/api/submissions?subgameId=subgame-ka-fintech')).status,401,'expired session'));
+ await query('DELETE FROM session');
+ for(const u of users){u.token=randomUUID();console.log(`::add-mask::${u.token}`);u.cookie=signed(u.token);}
+ const reauthNow=Date.now();await query(`INSERT INTO session (id,token,userId,expiresAt,createdAt,updatedAt) VALUES ${users.map(u=>`(${q(randomUUID())},${q(u.token)},${q(u.id)},${reauthNow+3600000},${reauthNow},${reauthNow})`).join(',')}`);
+ await phase('300 reauthenticated sessions recover saved draft',users,async u=>{const r=await request(u,'/api/submissions?subgameId=subgame-ka-fintech');check(r.status,200,'fresh session');check(r.body.submission.submissionId,u.draft.submissionId,'restored draft');check(Object.keys(r.body.submission.answerForm.responses).length,8,'restored answers');});
  await phase('300 concurrent questionnaire completions',users,async u=>check((await request(u,`/api/questionnaire-sessions/${u.draft.answerForm.sessionId}/complete`,'POST')).status,200,'complete'));
  await phase('300 concurrent private TXT uploads (1 KiB)',users,async u=>{const content=`[CLOUDFLARE QA] ${u.id}\n`.padEnd(1024,'.');u.content=content;const f=new FormData();f.set('kind','answer_attachment');f.set('file',new File([content],u.id+'.txt',{type:'text/plain'}));const r=await request(u,`/api/submissions/${u.draft.submissionId}/uploads`,'POST',f);check(r.status,201,'upload');u.uploadId=r.body.upload.id;});
  await phase('300 concurrent finalizations and receipt reads',users,async u=>{check((await request(u,`/api/submissions/${u.draft.submissionId}/finalize`,'POST')).status,201,'finalize');const r=await request(u,'/api/submissions?subgameId=subgame-ka-fintech');check(r.status,200,'receipt');check(r.body.submission.status,'submitted','status');check(r.body.submission.submissionId,u.draft.submissionId,'receipt owner');});
