@@ -1,3 +1,4 @@
+import { withD1RetryableErrorHandling } from "../../../../../lib/server/d1-overload";
 import { env } from "cloudflare:workers";
 
 import { requireResearchParticipant } from "../../../../../lib/server/research-access";
@@ -37,7 +38,7 @@ async function digestHex(bytes: Uint8Array): Promise<string> {
   return Array.from(digest, (value) => value.toString(16).padStart(2, "0")).join("");
 }
 
-export async function POST(request: Request, context: RouteContext): Promise<Response> {
+async function handlePOST(request: Request, context: RouteContext): Promise<Response> {
   if (!isSameOriginRequest(request)) return response({ code: "CROSS_ORIGIN_REQUEST" }, 403);
   const participant = await requireResearchParticipant(request);
   if (participant instanceof Response) return participant;
@@ -244,3 +245,5 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     },
   }, 201);
 }
+
+export const POST = withD1RetryableErrorHandling(handlePOST);

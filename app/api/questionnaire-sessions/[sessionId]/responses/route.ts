@@ -1,3 +1,4 @@
+import { withD1RetryableErrorHandling } from "../../../../../lib/server/d1-overload";
 import { env } from "cloudflare:workers";
 import { isSameOriginRequest } from "../../../../../lib/server/request-security";
 import { z } from "zod";
@@ -28,7 +29,7 @@ function noStoreResponse(body: Record<string, string>, status: number): Response
   });
 }
 
-export async function PUT(request: Request, context: RouteContext): Promise<Response> {
+async function handlePUT(request: Request, context: RouteContext): Promise<Response> {
   if (!isSameOriginRequest(request)) return noStoreResponse({ code: "CROSS_ORIGIN_REQUEST" }, 403);
   const participant = await requireResearchParticipant(request);
 
@@ -46,12 +47,14 @@ export async function PUT(request: Request, context: RouteContext): Promise<Resp
 
   const { sessionId } = await context.params;
   const session = await env.DB.prepare(
-    `SELECT questionnaire_id, completed_at, closed_at
-       FROM questionnaire_sessions
-      WHERE id = ? AND user_id = ?`,
+    `SELECT s.questionnaire_id, s.completed_at, s.closed_at,
+            q.id AS question_id, q.question_key, q.type, q.required, q.options_json
+       FROM questionnaire_sessions s
+       LEFT JOIN questions q ON q.questionnaire_id = s.questionnaire_id AND q.id = ?
+      WHERE s.id = ? AND s.user_id = ?`,
   )
-    .bind(sessionId, participant.userId)
-    .first<{ closed_at: string | null; completed_at: string | null; questionnaire_id: string }>();
+    .bind(parsed.data.questionId, sessionId, participant.userId)
+    .first<{ closed_at: string | null; completed_at: string | null; questionnaire_id: string; question_id: string | null; question_key: string; type: QuestionType; required: number; options_json: string }>();
 
   if (!session) {
     return noStoreResponse({ code: "QUESTIONNAIRE_SESSION_NOT_FOUND" }, 404);
@@ -61,23 +64,8 @@ export async function PUT(request: Request, context: RouteContext): Promise<Resp
     return noStoreResponse({ code: "QUESTIONNAIRE_SESSION_COMPLETED" }, 409);
   }
 
-  const question = await env.DB.prepare(
-    `SELECT id, question_key, type, required, options_json
-       FROM questions
-      WHERE id = ? AND questionnaire_id = ?`,
-  )
-    .bind(parsed.data.questionId, session.questionnaire_id)
-    .first<{
-      id: string;
-      options_json: string;
-      question_key: string;
-      required: number;
-      type: QuestionType;
-    }>();
-
-  if (!question) {
-    return noStoreResponse({ code: "QUESTION_NOT_FOUND" }, 404);
-  }
+  if (!session.question_id) return noStoreResponse({ code: "QUESTION_NOT_FOUND" }, 404);
+  const question = { ...session, id: session.question_id };
 
   if (parsed.data.value === null) {
     await env.DB.prepare(
@@ -120,3 +108,5 @@ export async function PUT(request: Request, context: RouteContext): Promise<Resp
 
   return noStoreResponse({ status: "saved" }, 200);
 }
+
+export const PUT = withD1RetryableErrorHandling(handlePUT);

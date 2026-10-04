@@ -344,4 +344,39 @@ describe("onboarding saves personal data and resumes without writing consent aga
     const foreign = await (await getQuestionnaire(request("GET", undefined, stranger), routeContext)).json() as { sessionId: unknown };
     expect(foreign.sessionId).not.toBe(form.sessionId);
   });
+  it.each([
+    "D1_ERROR: D1 DB is overloaded. Requests queued for too long.",
+    "D1_ERROR: Network connection lost.",
+  ])("recovers %s after a committed finalize without duplicating the receipt", async (errorMessage) => {
+    const user = `d1-retry-${crypto.randomUUID()}`;
+    await env.DB.prepare('INSERT INTO "user" (id, name, email, emailVerified, createdAt, updatedAt) VALUES (?, ?, ?, 1, 0, 0)')
+      .bind(user, "QA overload", `${user}@example.test`).run();
+    await consent(request("POST", { consentVersion, dataNoticeVersion, researchParticipation: true, aiChatUploadConsent: false }, user));
+    const draft = await (await startSubmission(request("POST", { subgameId: kaSubgameId }, user))).json() as { submission: { submissionId: string } };
+    const id = draft.submission.submissionId;
+    expect((await upload(answerAttachmentRequest(user), context(id))).status).toBe(201);
+    const database = env.DB;
+    env.DB = {
+      prepare(sql: string) {
+        if (sql.includes("SELECT subgames.id, subgames.required_for_completion")) {
+          throw new Error(errorMessage);
+        }
+        return database.prepare(sql);
+      },
+      batch: database.batch.bind(database),
+    } as D1Database;
+    try {
+      const busy = await finalize(request("POST", undefined, user), context(id));
+      expect(busy.status).toBe(503);
+      expect(await busy.json()).toEqual({ code: "DATABASE_BUSY" });
+      expect(await database.prepare("SELECT status FROM submissions WHERE id = ?").bind(id).first()).toEqual({ status: "submitted" });
+    } finally {
+      env.DB = database;
+    }
+    expect((await finalize(request("POST", undefined, user), context(id))).status).toBe(200);
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM activity_events WHERE user_id = ? AND event_type = 'submission_finalized'")
+      .bind(user).first()).toEqual({ n: 1 });
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM submissions WHERE user_id = ?").bind(user).first()).toEqual({ n: 1 });
+  });
+
 });

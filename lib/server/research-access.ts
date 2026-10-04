@@ -47,26 +47,14 @@ export async function requireResearchParticipant(
   }
 
   const account = await env.DB.prepare(
-    `SELECT id FROM "user" WHERE id = ? AND emailVerified = 1 AND research_deletion_pending_at IS NULL
-      AND (research_retention_expires_at IS NULL OR research_retention_expires_at > CURRENT_TIMESTAMP)`,
-  ).bind(session.user.id).first();
+    `SELECT EXISTS (SELECT 1 FROM consent_records
+       WHERE user_id = u.id AND consent_version = ? AND data_notice_version = ?
+         AND research_participation = 1 AND withdrawn_at IS NULL) AS consent_active
+       FROM "user" u WHERE id = ? AND emailVerified = 1 AND research_deletion_pending_at IS NULL
+         AND (research_retention_expires_at IS NULL OR research_retention_expires_at > CURRENT_TIMESTAMP)`,
+  ).bind(consentVersion, dataNoticeVersion, session.user.id).first<{ consent_active: number }>();
   if (!account) return noStoreResponse({ code: "RESEARCH_DATA_EXPIRED" }, 403);
-
-  const consent = await env.DB.prepare(
-    `SELECT id
-       FROM consent_records
-      WHERE user_id = ?
-        AND consent_version = ?
-        AND data_notice_version = ?
-        AND research_participation = 1
-        AND withdrawn_at IS NULL`,
-  )
-    .bind(session.user.id, consentVersion, dataNoticeVersion)
-    .first();
-
-  if (!consent) {
-    return noStoreResponse({ code: "RESEARCH_CONSENT_REQUIRED" }, 403);
-  }
+  if (!account.consent_active) return noStoreResponse({ code: "RESEARCH_CONSENT_REQUIRED" }, 403);
 
   return {
     consentVersion,

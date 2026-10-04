@@ -1,3 +1,4 @@
+import { withD1RetryableErrorHandling } from "../../../../../lib/server/d1-overload";
 import { env } from "cloudflare:workers";
 
 import { requireResearchParticipant } from "../../../../../lib/server/research-access";
@@ -22,14 +23,13 @@ function response(body: Record<string, unknown>, status = 200): Response {
   return Response.json(body, { headers: { "Cache-Control": "no-store" }, status });
 }
 
-async function loadSession(sessionId: string | null, userId: string): Promise<SubmissionSession | null> {
-  if (!sessionId) return null;
+function sessionStatement(sessionId: string | null, userId: string): D1PreparedStatement {
   return env.DB.prepare(
     `SELECT questionnaire_sessions.id, questionnaire_sessions.completed_at, questionnaires.questionnaire_key
        FROM questionnaire_sessions
        INNER JOIN questionnaires ON questionnaires.id = questionnaire_sessions.questionnaire_id
       WHERE questionnaire_sessions.id = ? AND questionnaire_sessions.user_id = ?`,
-  ).bind(sessionId, userId).first<SubmissionSession>();
+  ).bind(sessionId, userId);
 }
 
 function hasTextValue(valueJson: string | null): boolean {
@@ -43,7 +43,7 @@ function hasTextValue(valueJson: string | null): boolean {
 }
 
 async function answerTextIsComplete(
-  session: SubmissionSession | null,
+  session: SubmissionSession | null | undefined,
   requirements: SubmissionRequirements,
   userId: string,
 ): Promise<boolean> {
@@ -91,7 +91,7 @@ function finalizationUpdate(
   ).bind(submissionId, userId, consentVersion);
 }
 
-export async function POST(request: Request, context: RouteContext): Promise<Response> {
+async function handlePOST(request: Request, context: RouteContext): Promise<Response> {
   if (!isSameOriginRequest(request)) return response({ code: "CROSS_ORIGIN_REQUEST" }, 403);
   const participant = await requireResearchParticipant(request);
   if (participant instanceof Response) return participant;
@@ -115,22 +115,28 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
   if (submission.status !== "draft") return response({ code: "SUBMISSION_NOT_DRAFT" }, 409);
 
   const requirements = await getSubmissionRequirements(env.DB, submission.subgame_id);
-  const [answerSession, posttestSession, aiChatPdf, answerAttachment, acknowledgement] = await Promise.all([
-    loadSession(submission.questionnaire_session_id, participant.userId),
-    loadSession(submission.posttest_session_id, participant.userId),
+  const validation = await env.DB.batch([
+    sessionStatement(submission.questionnaire_session_id, participant.userId),
+    sessionStatement(submission.posttest_session_id, participant.userId),
     env.DB.prepare(
       `SELECT id FROM uploads WHERE submission_id = ? AND user_id = ? AND kind = 'ai_chat_pdf'
         AND status IN ('uploaded', 'accepted') LIMIT 1`,
-    ).bind(submissionId, participant.userId).first<{ id: string }>(),
+    ).bind(submissionId, participant.userId),
     env.DB.prepare(
       `SELECT id FROM uploads WHERE submission_id = ? AND user_id = ? AND kind = 'answer_attachment'
         AND status IN ('uploaded', 'accepted') LIMIT 1`,
-    ).bind(submissionId, participant.userId).first<{ id: string }>(),
+    ).bind(submissionId, participant.userId),
     env.DB.prepare(
       `SELECT id FROM submission_consent_acknowledgements
         WHERE submission_id = ? AND user_id = ? AND consent_version = ?`,
-    ).bind(submissionId, participant.userId, aiChatUploadConsentVersion).first<{ id: string }>(),
+    ).bind(submissionId, participant.userId, aiChatUploadConsentVersion),
   ]);
+
+  const answerSession = validation[0].results[0] as SubmissionSession | undefined;
+  const posttestSession = validation[1].results[0] as SubmissionSession | undefined;
+  const aiChatPdf = validation[2].results[0];
+  const answerAttachment = validation[3].results[0];
+  const acknowledgement = validation[4].results[0];
 
   if (requirements.requiresAnswerTextOrAttachment) {
     const answerSessionMatches = answerSession?.questionnaire_key === `submission:${submission.subgame_id}`;
@@ -183,3 +189,5 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
   if ((results[0]?.meta.changes ?? 0) === 0) return response({ code: "SUBMISSION_ALREADY_FINALIZED" }, 409);
   return response({ completion: await recalculateCompletionForUser(participant.userId), retentionYears, status: "submitted" }, 201);
 }
+
+export const POST = withD1RetryableErrorHandling(handlePOST);

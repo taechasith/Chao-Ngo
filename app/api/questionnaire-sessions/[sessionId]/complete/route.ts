@@ -1,3 +1,4 @@
+import { withD1RetryableErrorHandling } from "../../../../../lib/server/d1-overload";
 import { env } from "cloudflare:workers";
 import { isSameOriginRequest } from "../../../../../lib/server/request-security";
 
@@ -46,7 +47,7 @@ function asOptionalText(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
-export async function POST(request: Request, context: RouteContext): Promise<Response> {
+async function handlePOST(request: Request, context: RouteContext): Promise<Response> {
   if (!isSameOriginRequest(request)) return noStoreResponse({ code: "CROSS_ORIGIN_REQUEST" }, 403);
   const participant = await requireResearchParticipant(request);
 
@@ -329,3 +330,5 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     status: "completed",
   });
 }
+
+export const POST = withD1RetryableErrorHandling(handlePOST);

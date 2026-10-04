@@ -1,3 +1,4 @@
+import { withD1RetryableErrorHandling } from "../../../lib/server/d1-overload";
 import { env } from "cloudflare:workers";
 
 import { requireResearchParticipant } from "../../../lib/server/research-access";
@@ -67,23 +68,18 @@ async function loadQuestionnaire(sessionId: string | null): Promise<RouteQuestio
 
   if (!session) return null;
 
-  const [questions, saved] = await Promise.all([
+  const [questionRows, savedRows] = await env.DB.batch([
     env.DB.prepare(
       `SELECT id, question_key, prompt_th, type, required, options_json
          FROM questions WHERE questionnaire_id = ? ORDER BY sort_order ASC`,
-    ).bind(session.questionnaire_id).all<{
-      id: string;
-      options_json: string;
-      prompt_th: string;
-      question_key: string;
-      required: number;
-      type: string;
-    }>(),
+    ).bind(session.questionnaire_id),
     env.DB.prepare("SELECT question_id, value_json FROM responses WHERE session_id = ?")
-      .bind(sessionId).all<{ question_id: string; value_json: string }>(),
+      .bind(sessionId),
   ]);
 
-  const responses = Object.fromEntries(saved.results.map((row) => {
+  const questions = questionRows.results as Array<{ id: string; options_json: string; prompt_th: string; question_key: string; required: number; type: string }>;
+  const saved = savedRows.results as Array<{ question_id: string; value_json: string }>;
+  const responses = Object.fromEntries(saved.map((row) => {
     try {
       return [String(row.question_id), JSON.parse(String(row.value_json)) as unknown];
     } catch {
@@ -94,7 +90,7 @@ async function loadQuestionnaire(sessionId: string | null): Promise<RouteQuestio
   return {
     id: session.questionnaire_id,
     key: session.questionnaire_key,
-    questions: questions.results.map((row) => ({
+    questions: questions.map((row) => ({
       id: String(row.id),
       key: String(row.question_key),
       options: JSON.parse(String(row.options_json)) as unknown,
@@ -119,27 +115,33 @@ function clientRequirements(requirements: SubmissionRequirements): SubmissionReq
 }
 
 async function loadSubmission(row: SubmissionRow) {
-  const [requirements, answerForm, posttestForm, aiChatPdf, answerAttachment, acknowledgement] = await Promise.all([
+  const [requirements, answerForm, posttestForm, uploadRows] = await Promise.all([
     getSubmissionRequirements(env.DB, row.subgame_id),
     loadQuestionnaire(row.questionnaire_session_id),
     loadQuestionnaire(row.posttest_session_id),
-    env.DB.prepare(
-      `SELECT id, original_name, bytes, status FROM uploads
-        WHERE submission_id = ? AND user_id = ? AND kind = 'ai_chat_pdf'
-        ORDER BY created_at DESC, rowid DESC LIMIT 1`,
-    ).bind(row.id, row.user_id).first<UploadSummary>(),
-    env.DB.prepare(
-      `SELECT id, original_name, bytes, status FROM uploads
-        WHERE submission_id = ? AND user_id = ? AND kind = 'answer_attachment'
-        ORDER BY created_at DESC, rowid DESC LIMIT 1`,
-    ).bind(row.id, row.user_id).first<UploadSummary>(),
-    env.DB.prepare(
-      "SELECT acknowledged_at FROM submission_consent_acknowledgements WHERE submission_id = ? AND user_id = ? AND consent_version = ?",
-    ).bind(row.id, row.user_id, aiChatUploadConsentVersion).first<{ acknowledged_at: string }>(),
+    env.DB.batch([
+      env.DB.prepare(
+        `SELECT id, original_name, bytes, status FROM uploads
+          WHERE submission_id = ? AND user_id = ? AND kind = 'ai_chat_pdf'
+          ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+      ).bind(row.id, row.user_id),
+      env.DB.prepare(
+        `SELECT id, original_name, bytes, status FROM uploads
+          WHERE submission_id = ? AND user_id = ? AND kind = 'answer_attachment'
+          ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+      ).bind(row.id, row.user_id),
+      env.DB.prepare(
+        "SELECT acknowledged_at FROM submission_consent_acknowledgements WHERE submission_id = ? AND user_id = ? AND consent_version = ?",
+      ).bind(row.id, row.user_id, aiChatUploadConsentVersion),
+    ]),
   ]);
 
+  const aiChatPdf = uploadRows[0].results[0] as UploadSummary | undefined;
+  const answerAttachment = uploadRows[1].results[0] as UploadSummary | undefined;
+  const acknowledgement = uploadRows[2].results[0] as { acknowledged_at: string } | undefined;
+
   return {
-    acknowledgement,
+    acknowledgement: acknowledgement ?? null,
     answerForm,
     posttestForm,
     requirements: clientRequirements(requirements),
@@ -174,7 +176,7 @@ async function publishedQuestionnaireId(questionnaireKey: string): Promise<strin
   return questionnaire?.id ?? null;
 }
 
-export async function GET(request: Request): Promise<Response> {
+async function handleGET(request: Request): Promise<Response> {
   const participant = await requireResearchParticipant(request);
   if (participant instanceof Response) return participant;
 
@@ -184,7 +186,7 @@ export async function GET(request: Request): Promise<Response> {
   return response({ submission: await getDraft(participant.userId, subgameId) });
 }
 
-export async function POST(request: Request): Promise<Response> {
+async function handlePOST(request: Request): Promise<Response> {
   if (!isSameOriginRequest(request)) return response({ code: "CROSS_ORIGIN_REQUEST" }, 403);
   const participant = await requireResearchParticipant(request);
   if (participant instanceof Response) return participant;
@@ -268,3 +270,6 @@ export async function POST(request: Request): Promise<Response> {
   const draft = await getDraft(participant.userId, subgameId);
   return response({ submission: draft, status: "created" }, 201);
 }
+
+export const GET = withD1RetryableErrorHandling(handleGET);
+export const POST = withD1RetryableErrorHandling(handlePOST);
