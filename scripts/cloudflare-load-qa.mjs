@@ -8,7 +8,7 @@ if(!/^\d+$/.test(run))throw new Error('Run only from GitHub Actions');
 const name=`chao-ngo-qa-${run}`,dbName=name,bucketName=name;
 const report={scope:'Remote Cloudflare Worker/D1/R2, D1 overload fix candidate application code, real Better Auth session verification; synthetic QA identities, NOT 300 Google OAuth logins',source:process.env.GITHUB_SHA,run,startedAt:new Date().toISOString(),phases:[],requests:[],resources:{worker:name,database:dbName,bucket:bucketName},cleanup:[]};
 let dbId,origin,createdWorker=false,createdBucket=false,users=[],uploads=[],tailProcess;
-report.cloudflareExceptions=[];
+report.cloudflareExceptions=[];report.autosaveRetries=[];
 const secret=randomBytes(48).toString('base64url');
 console.log(`::add-mask::${secret}`);
 await mkdir('qa-results',{recursive:true});
@@ -57,7 +57,7 @@ try{
  cli(['deploy','--config','dist/server/wrangler.qa.json']);
  tailProcess=spawn(process.execPath,['node_modules/wrangler/bin/wrangler.js','tail','--format','json','--config','dist/server/wrangler.qa.json'],{env:process.env,stdio:['ignore','pipe','ignore']});
  let tailBuffer='',tailJson='';report.tailEvents=0;
- const captureTail=event=>{report.tailEvents++;for(const ex of event.exceptions||[]){if(report.cloudflareExceptions.length<30)report.cloudflareExceptions.push({name:ex.name,message:String(ex.message).slice(0,500)});}for(const log of event.logs||[]){const msg=(log.message||[]).join(' ');if(/D1_|SQLITE|overload|queue|exceeded/i.test(msg)&&report.cloudflareExceptions.length<30)report.cloudflareExceptions.push({name:log.level,message:msg.slice(0,500)});}};
+ const captureTail=event=>{report.tailEvents++;for(const ex of event.exceptions||[]){if(report.cloudflareExceptions.length<30)report.cloudflareExceptions.push({name:ex.name,message:String(ex.message).slice(0,500)});}for(const log of event.logs||[]){const msg=(log.message||[]).join(' ');if(/D1(?:_| transient)|SQLITE|overload|queue|exceeded/i.test(msg)&&report.cloudflareExceptions.length<30)report.cloudflareExceptions.push({name:log.level,message:msg.slice(0,500)});}};
  tailProcess.stdout.on('data',chunk=>{tailBuffer+=chunk.toString();let pos;while((pos=tailBuffer.indexOf('\n'))>=0){const line=tailBuffer.slice(0,pos);tailBuffer=tailBuffer.slice(pos+1);if(line==='{'||tailJson){tailJson+=line+'\n';if(line==='}'){try{captureTail(JSON.parse(tailJson));}catch{}tailJson='';}}else{try{captureTail(JSON.parse(line));}catch{}}}});
  // Allow the new worker to become available; bounded readiness, not counted as load.
  for(let i=0;i<12;i++){const r=await request(null,'/api/submissions');if(r.status===401)break;if(i===11)throw new Error('QA endpoint not ready');await new Promise(r=>setTimeout(r,2000));}
@@ -69,7 +69,14 @@ try{
  const sanity=await request(users[0],'/api/auth/get-session');check(sanity.status,200,'Signed session sanity status');check(sanity.body?.user?.id,users[0].id,'Signed session sanity identity');
  await phase('300 concurrent start/resume draft',users,async u=>{const r=await request(u,'/api/submissions','POST',{subgameId:'subgame-ka-fintech'});check(r.status,201,'start');u.draft=r.body.submission;});
  await phase('300 concurrent players autosave 8 answers and read them back',users,async(u)=>{
- for(const question of u.draft.answerForm.questions){const value=question.key==='submission_mode'?'text':`[CLOUDFLARE QA] ${u.id}: ${question.key}`;check((await request(u,`/api/questionnaire-sessions/${u.draft.answerForm.sessionId}/responses`,'PUT',{questionId:question.id,value})).status,200,'save');}
+ for(const question of u.draft.answerForm.questions){const value=question.key==='submission_mode'?'text':`[CLOUDFLARE QA] ${u.id}: ${question.key}`;// The shipped browser autosave retries transient failures; keep every first failure in raw metrics.
+ for(let attempt=0;;attempt++){
+  const saved=await request(u,`/api/questionnaire-sessions/${u.draft.answerForm.sessionId}/responses`,'PUT',{questionId:question.id,value});
+  if(saved.status===200)break;
+  if(attempt>=3||saved.status!==503||saved.body?.code!=='DATABASE_BUSY')check(saved.status,200,'save');
+  report.autosaveRetries.push({user:u.id,question:question.key,attempt:attempt+1,status:saved.status,code:saved.body?.code});
+  await new Promise(resolve=>setTimeout(resolve,2000*2**attempt));
+ }}
  const r=await request(u,'/api/submissions?subgameId=subgame-ka-fintech');check(r.status,200,'read');check(r.body.submission.submissionId,u.draft.submissionId,'owner submission');for(const question of u.draft.answerForm.questions){check(r.body.submission.answerForm.responses[question.id],question.key==='submission_mode'?'text':`[CLOUDFLARE QA] ${u.id}: ${question.key}`,'stored answer');}
  });
  // Disconnect 10 clients while writing to the remote Worker, then reconnect/retry.
@@ -95,7 +102,7 @@ try{
  await phase('300 concurrent finalizations and receipt reads',users,async u=>{check((await request(u,`/api/submissions/${u.draft.submissionId}/finalize`,'POST')).status,201,'finalize');const r=await request(u,'/api/submissions?subgameId=subgame-ka-fintech');check(r.status,200,'receipt');check(r.body.submission.status,'submitted','status');check(r.body.submission.submissionId,u.draft.submissionId,'receipt owner');});
  await phase('300 concurrent repeated finalize requests',users,async u=>check((await request(u,`/api/submissions/${u.draft.submissionId}/finalize`,'POST')).status,200,'idempotent retry'));
  const counts=(await query("SELECT (SELECT COUNT(*) FROM submissions WHERE status='submitted') AS submitted,(SELECT COUNT(*) FROM responses) AS responses,(SELECT COUNT(*) FROM uploads WHERE status='uploaded') AS uploaded,(SELECT COUNT(*) FROM activity_events WHERE event_type='submission_finalized') AS finalized_events,(SELECT COUNT(*) FROM submissions s JOIN questionnaire_sessions qs ON qs.id=s.questionnaire_session_id WHERE s.user_id!=qs.user_id) AS foreign_sessions,(SELECT COUNT(*) FROM responses r JOIN questionnaire_sessions qs ON qs.id=r.session_id WHERE r.value_json LIKE '%CLOUDFLARE QA%' AND r.value_json NOT LIKE '%'||qs.user_id||'%') AS foreign_answers"))[0];
- check(counts.submitted,users.length,'DB submissions');check(counts.responses,users.length*8,'DB responses');check(counts.uploaded,users.length,'DB uploads');check(counts.finalized_events,users.length,'DB finalization events');check(counts.foreign_sessions,0,'foreign sessions');check(counts.foreign_answers,0,'foreign answers');report.integrity={counts};
+ report.integrity={counts};if(!report.partialFailure){check(counts.submitted,300,'DB submissions');check(counts.responses,2400,'DB responses');check(counts.uploaded,300,'DB uploads');check(counts.finalized_events,300,'DB finalization events');}check(counts.foreign_sessions,0,'foreign sessions');check(counts.foreign_answers,0,'foreign answers');report.integrity={counts};
  uploads=await query('SELECT id,user_id,private_r2_key,sha256,bytes FROM uploads');
  await phase('R2 byte verification of 300 files (management concurrency 10)',users,async u=>withR2Slot(async()=>{const upload=uploads.find(x=>x.id===u.uploadId);const r=await fetch(`${api}/accounts/${account}/r2/buckets/${bucketName}/objects/${upload.private_r2_key}`,{headers:{Authorization:`Bearer ${process.env.CLOUDFLARE_API_TOKEN}`},signal:AbortSignal.timeout(45000)});check(r.status,200,'R2 read');check(await r.text(),u.content,'R2 bytes');check(upload.sha256,createHash('sha256').update(u.content).digest('hex'),'R2 checksum');}));
  report.integrity.filesByteVerified=users.length;report.status=report.partialFailure?'failed':'pass';if(report.partialFailure){report.failure='Measured phase failures; subsequent phases only cover surviving users';process.exitCode=1;}
