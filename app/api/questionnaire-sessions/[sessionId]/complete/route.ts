@@ -1,4 +1,4 @@
-import { withD1OverloadHandling } from "../../../../../lib/server/d1-overload";
+import { withD1RetryableErrorHandling } from "../../../../../lib/server/d1-overload";
 import { env } from "cloudflare:workers";
 import { isSameOriginRequest } from "../../../../../lib/server/request-security";
 
@@ -331,4 +331,4 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
   });
 }
 
-export const POST = withD1OverloadHandling(handlePOST);
+export const POST = withD1RetryableErrorHandling(handlePOST);

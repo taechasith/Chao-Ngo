@@ -1,4 +1,4 @@
-import { withD1OverloadHandling } from "../../../../../lib/server/d1-overload";
+import { withD1RetryableErrorHandling } from "../../../../../lib/server/d1-overload";
 import { env } from "cloudflare:workers";
 import { isSameOriginRequest } from "../../../../../lib/server/request-security";
 import { z } from "zod";
@@ -109,4 +109,4 @@ async function handlePUT(request: Request, context: RouteContext): Promise<Respo
   return noStoreResponse({ status: "saved" }, 200);
 }
 
-export const PUT = withD1OverloadHandling(handlePUT);
+export const PUT = withD1RetryableErrorHandling(handlePUT);

@@ -344,8 +344,11 @@ describe("onboarding saves personal data and resumes without writing consent aga
     const foreign = await (await getQuestionnaire(request("GET", undefined, stranger), routeContext)).json() as { sessionId: unknown };
     expect(foreign.sessionId).not.toBe(form.sessionId);
   });
-  it("returns retryable overload after a committed finalize and never duplicates the receipt", async () => {
-    const user = "overload-retry-owner";
+  it.each([
+    "D1_ERROR: D1 DB is overloaded. Requests queued for too long.",
+    "D1_ERROR: Network connection lost.",
+  ])("recovers %s after a committed finalize without duplicating the receipt", async (errorMessage) => {
+    const user = `d1-retry-${crypto.randomUUID()}`;
     await env.DB.prepare('INSERT INTO "user" (id, name, email, emailVerified, createdAt, updatedAt) VALUES (?, ?, ?, 1, 0, 0)')
       .bind(user, "QA overload", `${user}@example.test`).run();
     await consent(request("POST", { consentVersion, dataNoticeVersion, researchParticipation: true, aiChatUploadConsent: false }, user));
@@ -356,7 +359,7 @@ describe("onboarding saves personal data and resumes without writing consent aga
     env.DB = {
       prepare(sql: string) {
         if (sql.includes("SELECT subgames.id, subgames.required_for_completion")) {
-          throw new Error("D1_ERROR: D1 DB is overloaded. Requests queued for too long.");
+          throw new Error(errorMessage);
         }
         return database.prepare(sql);
       },
