@@ -68,7 +68,7 @@ try{
  const unauth=await request(null,'/api/submissions');check(unauth.status,401,'Unauthenticated guard');check((await request(null,'/api/submissions/00000000-0000-4000-8000-000000000000/finalize','POST')).status,401,'Coordinator auth guard');
  const sanity=await request(users[0],'/api/auth/get-session');check(sanity.status,200,'Signed session sanity status');check(sanity.body?.user?.id,users[0].id,'Signed session sanity identity');
  await phase('300 concurrent start/resume draft',users,async u=>{const r=await request(u,'/api/submissions','POST',{subgameId:'subgame-ka-fintech'});check(r.status,201,'start');u.draft=r.body.submission;});
- check((await request(users[1],`/api/submissions/${users[0].draft.submissionId}/finalize`,'POST')).status,404,'Coordinator ownership guard');
+ report.phase='coordinator ownership guard';check((await request(users[1],`/api/submissions/${users[0].draft.submissionId}/finalize`,'POST')).status,404,'Coordinator ownership guard');delete report.phase;
  await phase('300 concurrent players autosave 8 answers and read them back',users,async(u)=>{
  for(const question of u.draft.answerForm.questions){const value=question.key==='submission_mode'?'text':`[CLOUDFLARE QA] ${u.id}: ${question.key}`;// The shipped browser autosave retries transient failures; keep every first failure in raw metrics.
  for(let attempt=0;;attempt++){
