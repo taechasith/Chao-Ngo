@@ -6,15 +6,15 @@ import { spawnSync } from "node:child_process";
 const remote = process.argv.includes("--remote");
 const reportOnly = process.argv.includes("--report-only");
 const queries = [
-  "SELECT name FROM pragma_table_info('user_profiles')",
+  "PRAGMA table_info(user_profiles)",
   `SELECT 'accounts' AS record_type, COUNT(*) AS stored_records FROM "user"
    UNION ALL SELECT 'player_profiles', COUNT(*) FROM user_profiles
    UNION ALL SELECT 'answer_values', COUNT(*) FROM responses
    UNION ALL SELECT 'questionnaire_sessions', COUNT(*) FROM questionnaire_sessions
    UNION ALL SELECT 'submitted_cases', COUNT(*) FROM submissions WHERE status IN ('submitted','accepted','needs_revision')
    UNION ALL SELECT 'private_uploads', COUNT(*) FROM uploads WHERE status IN ('uploaded','accepted')`,
-  "SELECT name FROM pragma_table_info('submissions')",
-  "SELECT name FROM pragma_table_info('questionnaire_sessions')",
+  "PRAGMA table_info(submissions)",
+  "PRAGMA table_info(questionnaire_sessions)",
   `SELECT COUNT(*) AS submissions_missing_answer_session FROM submissions s
      LEFT JOIN questionnaire_sessions qs ON qs.id = s.questionnaire_session_id
     WHERE s.questionnaire_session_id IS NOT NULL AND qs.id IS NULL`,
@@ -25,7 +25,12 @@ for (const query of queries) {
     encoding: "utf8", env: { ...process.env, WRANGLER_LOG_PATH: process.env.WRANGLER_LOG_PATH ?? "/private/tmp/chao-ngo-data-check.log" },
   });
   if (command.status !== 0) {
-    console.error("Read-only game data check failed. Verify D1 access and database bindings; no data was changed.");
+    const output = command.stdout + command.stderr;
+    const reason = /SQLITE_AUTH|not authorized/i.test(output) ? "D1 rejected this SQL operation"
+      : /Authentication error|403/i.test(output) ? "D1 authentication or permissions failed"
+      : /no such table/i.test(output) ? "A required table is missing"
+      : "D1 query failed";
+    console.error(`Read-only game data check ${results.length + 1} failed: ${reason}; no data was changed.`);
     process.exit(1);
   }
   try { results.push(JSON.parse(command.stdout)); }
