@@ -18,7 +18,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Test the unchanged application on separate Cloudflare Worker, D1 and R2
+      - name: Test candidate application on isolated Cloudflare Worker, D1 and R2
         run: node scripts/cloudflare-load-qa.mjs
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

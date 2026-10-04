@@ -68,6 +68,7 @@ try{
  const unauth=await request(null,'/api/submissions');check(unauth.status,401,'Unauthenticated guard');check((await request(null,'/api/submissions/00000000-0000-4000-8000-000000000000/finalize','POST')).status,401,'Coordinator auth guard');
  const sanity=await request(users[0],'/api/auth/get-session');check(sanity.status,200,'Signed session sanity status');check(sanity.body?.user?.id,users[0].id,'Signed session sanity identity');
  await phase('300 concurrent start/resume draft',users,async u=>{const r=await request(u,'/api/submissions','POST',{subgameId:'subgame-ka-fintech'});check(r.status,201,'start');u.draft=r.body.submission;});
+ check((await request(users[1],`/api/submissions/${users[0].draft.submissionId}/finalize`,'POST')).status,404,'Coordinator ownership guard');
  await phase('300 concurrent players autosave 8 answers and read them back',users,async(u)=>{
  for(const question of u.draft.answerForm.questions){const value=question.key==='submission_mode'?'text':`[CLOUDFLARE QA] ${u.id}: ${question.key}`;// The shipped browser autosave retries transient failures; keep every first failure in raw metrics.
  for(let attempt=0;;attempt++){
@@ -92,7 +93,7 @@ try{
  await phase('300 concurrent reconnect reads',users,async u=>{const r=await request(u,'/api/submissions?subgameId=subgame-ka-fintech');check(r.status,200,'reconnect read');check(r.body.submission.submissionId,u.draft.submissionId,'same draft');for(const question of u.draft.answerForm.questions){check(r.body.submission.answerForm.responses[question.id],question.key==='submission_mode'?'text':question.key==='case_truth_model'&&u.recoveredValue?u.recoveredValue:`[CLOUDFLARE QA] ${u.id}: ${question.key}`,'reconnected answer');}});
  // A real remote DB session expiry and fresh signed session, only for disposable QA identities.
  await query(`UPDATE session SET expiresAt=${Date.now()-60000}`);
- await phase('300 expired sessions rejected',users,async u=>check((await request(u,'/api/submissions?subgameId=subgame-ka-fintech')).status,401,'expired session'));
+ await phase('300 expired sessions rejected',users,async u=>{check((await request(u,'/api/submissions?subgameId=subgame-ka-fintech')).status,401,'expired session');check((await request(u,`/api/submissions/${u.draft.submissionId}/finalize`,'POST')).status,401,'expired coordinator session');});
  await query('DELETE FROM session');
  for(const u of users){u.token=randomUUID();console.log(`::add-mask::${u.token}`);u.cookie=signed(u.token);}
  const reauthNow=Date.now();await query(`INSERT INTO session (id,token,userId,expiresAt,createdAt,updatedAt) VALUES ${users.map(u=>`(${q(randomUUID())},${q(u.token)},${q(u.id)},${reauthNow+3600000},${reauthNow},${reauthNow})`).join(',')}`);
