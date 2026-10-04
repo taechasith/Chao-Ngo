@@ -1,0 +1,31 @@
+name: D1 overload fix: isolated 300-player QA
+on:
+  push:
+    branches: [codex/d1-overload-qa-20261005]
+permissions:
+  contents: read
+concurrency:
+  group: chao-ngo-isolated-load-qa
+  cancel-in-progress: false
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Test the unchanged application on separate Cloudflare Worker, D1 and R2
+        run: node scripts/cloudflare-load-qa.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: c24fed68f8dc59cc339bd821d215bba8
+          NEXT_PUBLIC_TURNSTILE_SITE_KEY: 1x00000000000000000000AA
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: isolated-cloudflare-300-results
+          path: qa-results/
