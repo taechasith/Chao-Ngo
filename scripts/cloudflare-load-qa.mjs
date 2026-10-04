@@ -57,7 +57,9 @@ try{
  cli(['secret','put','BETTER_AUTH_SECRET','--config','dist/server/wrangler.qa.json'],secret+'\n');createdWorker=true;
  cli(['deploy','--config','dist/server/wrangler.qa.json']);
  tailProcess=spawn(process.execPath,['node_modules/wrangler/bin/wrangler.js','tail','--format','json','--config','dist/server/wrangler.qa.json'],{env:process.env,stdio:['ignore','pipe','ignore']});
- let tailBuffer='';tailProcess.stdout.on('data',chunk=>{tailBuffer+=chunk.toString();let pos;while((pos=tailBuffer.indexOf('\n'))>=0){const line=tailBuffer.slice(0,pos);tailBuffer=tailBuffer.slice(pos+1);try{const event=JSON.parse(line);for(const ex of event.exceptions||[]){if(report.cloudflareExceptions.length<30)report.cloudflareExceptions.push({name:ex.name,message:String(ex.message).slice(0,500)});}}catch{}}});
+ let tailBuffer='',tailJson='';report.tailEvents=0;
+ const captureTail=event=>{report.tailEvents++;for(const ex of event.exceptions||[]){if(report.cloudflareExceptions.length<30)report.cloudflareExceptions.push({name:ex.name,message:String(ex.message).slice(0,500)});}for(const log of event.logs||[]){const msg=(log.message||[]).join(' ');if(/D1_|SQLITE|overload|queue|exceeded/i.test(msg)&&report.cloudflareExceptions.length<30)report.cloudflareExceptions.push({name:log.level,message:msg.slice(0,500)});}};
+ tailProcess.stdout.on('data',chunk=>{tailBuffer+=chunk.toString();let pos;while((pos=tailBuffer.indexOf('\n'))>=0){const line=tailBuffer.slice(0,pos);tailBuffer=tailBuffer.slice(pos+1);if(line==='{'||tailJson){tailJson+=line+'\n';if(line==='}'){try{captureTail(JSON.parse(tailJson));}catch{}tailJson='';}}else{try{captureTail(JSON.parse(line));}catch{}}}});
  // Allow the new worker to become available; bounded readiness, not counted as load.
  for(let i=0;i<12;i++){const r=await request(null,'/api/submissions');if(r.status===401)break;if(i===11)throw new Error('QA endpoint not ready');await new Promise(r=>setTimeout(r,2000));}
  // Record a 30-second propagation/warm-up window before measured traffic. No measured failure is retried.
