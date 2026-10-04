@@ -66,7 +66,17 @@ try{
  for(const question of u.draft.answerForm.questions){const value=question.key==='submission_mode'?'text':`[CLOUDFLARE QA] ${u.id}: ${question.key}`;check((await request(u,`/api/questionnaire-sessions/${u.draft.answerForm.sessionId}/responses`,'PUT',{questionId:question.id,value})).status,200,'save');}
  const r=await request(u,'/api/submissions?subgameId=subgame-ka-fintech');check(r.status,200,'read');check(r.body.submission.submissionId,u.draft.submissionId,'owner submission');for(const question of u.draft.answerForm.questions){check(r.body.submission.answerForm.responses[question.id],question.key==='submission_mode'?'text':`[CLOUDFLARE QA] ${u.id}: ${question.key}`,'stored answer');}
  });
- await phase('300 concurrent reconnect reads',users,async u=>{const r=await request(u,'/api/submissions?subgameId=subgame-ka-fintech');check(r.status,200,'reconnect read');check(r.body.submission.submissionId,u.draft.submissionId,'same draft');for(const question of u.draft.answerForm.questions){check(r.body.submission.answerForm.responses[question.id],question.key==='submission_mode'?'text':`[CLOUDFLARE QA] ${u.id}: ${question.key}`,'reconnected answer');}});
+ // Disconnect 10 clients while writing to the remote Worker, then reconnect/retry.
+ await phase('10 remote transport interruptions and retry recovery',users.slice(0,10),async u=>{
+ const question=u.draft.answerForm.questions.find(q=>q.key==='case_truth_model');
+ u.recoveredValue=`[CLOUDFLARE QA] ${u.id}: reconnect edit`;
+ const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),150);let interrupted=false;
+ try{const r=await fetch(origin+`/api/questionnaire-sessions/${u.draft.answerForm.sessionId}/responses`,{method:'PUT',headers:{Origin:origin,Cookie:u.cookie,'Content-Type':'application/json'},body:JSON.stringify({questionId:question.id,value:u.recoveredValue}),signal:ctrl.signal});await r.text();}catch(e){if(e.name!=='AbortError')throw e;interrupted=true;}finally{clearTimeout(timer);}
+ check(interrupted,true,'client transport was interrupted');
+ check((await request(u,`/api/questionnaire-sessions/${u.draft.answerForm.sessionId}/responses`,'PUT',{questionId:question.id,value:u.recoveredValue})).status,200,'retry save');
+ const r=await request(u,'/api/submissions?subgameId=subgame-ka-fintech');check(r.body.submission.answerForm.responses[question.id],u.recoveredValue,'reconnected latest edit');
+ });
+ await phase('300 concurrent reconnect reads',users,async u=>{const r=await request(u,'/api/submissions?subgameId=subgame-ka-fintech');check(r.status,200,'reconnect read');check(r.body.submission.submissionId,u.draft.submissionId,'same draft');for(const question of u.draft.answerForm.questions){check(r.body.submission.answerForm.responses[question.id],question.key==='submission_mode'?'text':question.key==='case_truth_model'&&u.recoveredValue?u.recoveredValue:`[CLOUDFLARE QA] ${u.id}: ${question.key}`,'reconnected answer');}});
  // A real remote DB session expiry and fresh signed session, only for disposable QA identities.
  await query(`UPDATE session SET expiresAt=${Date.now()-60000}`);
  await phase('300 expired sessions rejected',users,async u=>check((await request(u,'/api/submissions?subgameId=subgame-ka-fintech')).status,401,'expired session'));
