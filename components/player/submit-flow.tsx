@@ -129,7 +129,7 @@ function choices(value: unknown): Choice[] {
 
 function thaiError(code: string): string {
   const messages: Record<string, string> = {
-    DATABASE_BUSY: "ระบบบันทึกกำลังมีคำขอจำนวนมาก กรุณารอสักครู่แล้วลองอีกครั้ง",
+    DATABASE_BUSY: "ระบบบันทึกไม่พร้อมชั่วคราว กรุณารอสักครู่แล้วลองอีกครั้ง",
     ACKNOWLEDGEMENT_REQUIRED: "กรุณายืนยันเงื่อนไขการใช้ไฟล์ PDF ก่อนอัปโหลด",
     ANSWER_ATTACHMENT_NOT_ALLOWED: "แฟ้มคดีนี้ไม่รับไฟล์แนบคำตอบ",
     ANSWER_ATTACHMENT_REQUIRED: "กรุณาเลือกไฟล์คำตอบ",

@@ -1,4 +1,4 @@
-import { withD1OverloadHandling } from "../../../../../lib/server/d1-overload";
+import { withD1RetryableErrorHandling } from "../../../../../lib/server/d1-overload";
 import { env } from "cloudflare:workers";
 
 import { requireResearchParticipant } from "../../../../../lib/server/research-access";
@@ -190,4 +190,4 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
   return response({ completion: await recalculateCompletionForUser(participant.userId), retentionYears, status: "submitted" }, 201);
 }
 
-export const POST = withD1OverloadHandling(handlePOST);
+export const POST = withD1RetryableErrorHandling(handlePOST);

@@ -1,4 +1,4 @@
-import { withD1OverloadHandling } from "../../../lib/server/d1-overload";
+import { withD1RetryableErrorHandling } from "../../../lib/server/d1-overload";
 import { env } from "cloudflare:workers";
 
 import { requireResearchParticipant } from "../../../lib/server/research-access";
@@ -271,5 +271,5 @@ async function handlePOST(request: Request): Promise<Response> {
   return response({ submission: draft, status: "created" }, 201);
 }
 
-export const GET = withD1OverloadHandling(handleGET);
-export const POST = withD1OverloadHandling(handlePOST);
+export const GET = withD1RetryableErrorHandling(handleGET);
+export const POST = withD1RetryableErrorHandling(handlePOST);
