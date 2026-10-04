@@ -20,6 +20,7 @@ const queries = [
     WHERE s.questionnaire_session_id IS NOT NULL AND qs.id IS NULL`,
   "SELECT name FROM d1_migrations ORDER BY id",
   "PRAGMA table_info(questions)",
+  "PRAGMA index_list(submissions)",
 ];
 const results = [];
 for (const query of queries) {
@@ -42,7 +43,7 @@ for (const query of queries) {
 }
 const rows = results.map(result => result.flatMap(item => item.results ?? []));
 if (reportOnly) {
-  console.log(JSON.stringify({ environment: remote ? "production" : "local", profileColumns: rows[0].map(row => row.name), counts: rows[1], submissionColumns: rows[2].map(row => row.name), questionnaireSessionColumns: rows[3].map(row => row.name), integrity: rows[4], appliedMigrations: rows[5].map(row => row.name), questionColumns: rows[6].map(row => row.name) }, null, 2));
+  console.log(JSON.stringify({ environment: remote ? "production" : "local", profileColumns: rows[0].map(row => row.name), counts: rows[1], submissionColumns: rows[2].map(row => row.name), questionnaireSessionColumns: rows[3].map(row => row.name), integrity: rows[4], appliedMigrations: rows[5].map(row => row.name), questionColumns: rows[6].map(row => row.name), submissionIndexes: rows[7].map(row => row.name) }, null, 2));
   process.exit(0);
 }
 if (!rows[0].some(column => column.name === "personal_skills_json")) {
@@ -55,6 +56,10 @@ if (!["reviewer_note", "revision_of_submission_id"].every(name => rows[2].some(c
 }
 if (!rows[3].some(column => column.name === "closed_at")) {
   console.error("Missing questionnaire closure migration 0015_submission_reviews.sql."); process.exit(1);
+}
+if (!rows[7].some(index => index.name === "submissions_user_subgame_created_idx")) {
+  console.error("Missing submission lookup index 0016_submission_lookup_index.sql. Apply the reviewed migration before deploying.");
+  process.exit(1);
 }
 console.log(JSON.stringify({ environment: remote ? "production" : "local", profileSchemaReady: true, counts: rows[1], reviewSchemaReady: true, integrity: rows[4] }, null, 2));
 if (rows[4].some(row => row.submissions_missing_answer_session !== 0)) process.exit(1);
