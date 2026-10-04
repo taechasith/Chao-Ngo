@@ -7,12 +7,12 @@ const remote = process.argv.includes("--remote");
 const reportOnly = process.argv.includes("--report-only");
 const queries = [
   "PRAGMA table_info(user_profiles)",
-  `SELECT 'accounts' AS record_type, COUNT(*) AS stored_records FROM "user"
-   UNION ALL SELECT 'player_profiles', COUNT(*) FROM user_profiles
-   UNION ALL SELECT 'answer_values', COUNT(*) FROM responses
-   UNION ALL SELECT 'questionnaire_sessions', COUNT(*) FROM questionnaire_sessions
-   UNION ALL SELECT 'submitted_cases', COUNT(*) FROM submissions WHERE status IN ('submitted','accepted','needs_revision')
-   UNION ALL SELECT 'private_uploads', COUNT(*) FROM uploads WHERE status IN ('uploaded','accepted')`,
+  `SELECT (SELECT COUNT(*) FROM "user") AS accounts,
+    (SELECT COUNT(*) FROM user_profiles) AS player_profiles,
+    (SELECT COUNT(*) FROM responses) AS answer_values,
+    (SELECT COUNT(*) FROM questionnaire_sessions) AS questionnaire_sessions,
+    (SELECT COUNT(*) FROM submissions WHERE status IN ('submitted','accepted','needs_revision')) AS submitted_cases,
+    (SELECT COUNT(*) FROM uploads WHERE status IN ('uploaded','accepted')) AS private_uploads`,
   "PRAGMA table_info(submissions)",
   "PRAGMA table_info(questionnaire_sessions)",
   `SELECT COUNT(*) AS submissions_missing_answer_session FROM submissions s
@@ -40,7 +40,7 @@ for (const query of queries) {
 }
 const rows = results.map(result => result.flatMap(item => item.results ?? []));
 if (reportOnly) {
-  console.log(JSON.stringify({ environment: remote ? "production" : "local", profileColumns: rows[0], counts: rows[1], submissionColumns: rows[2], questionnaireSessionColumns: rows[3], integrity: rows[4] }, null, 2));
+  console.log(JSON.stringify({ environment: remote ? "production" : "local", profileColumns: rows[0].map(row => row.name), counts: rows[1], submissionColumns: rows[2].map(row => row.name), questionnaireSessionColumns: rows[3].map(row => row.name), integrity: rows[4] }, null, 2));
   process.exit(0);
 }
 if (!rows[0].some(column => column.name === "personal_skills_json")) {
