@@ -19,7 +19,7 @@ async function cf(path,method='GET',body){
 const query=async sql=>(await cf(`/accounts/${account}/d1/database/${dbId}/query`,'POST',{sql,params:[]}))[0]?.results||[];
 const q=x=>`'${String(x).replaceAll("'","''")}'`;
 function cli(args,input){const r=spawnSync(process.execPath,['node_modules/wrangler/bin/wrangler.js',...args],{encoding:'utf8',input,env:{...process.env,WRANGLER_LOG_PATH:`${process.env.RUNNER_TEMP}/chao-ngo-qa.log`},maxBuffer:20*1024*1024});if(r.status!==0){console.log((r.stderr||r.stdout).slice(-3000));throw new Error(`Wrangler ${args.slice(0,2).join(' ')} failed`);}console.log((r.stdout||'').slice(-2500));return r.stdout;}
-function signed(token){return 'better-auth.session_token='+encodeURIComponent(token+'.'+createHmac('sha256',secret).update(token).digest('base64'));}
+function signed(token){return '__Secure-better-auth.session_token='+encodeURIComponent(token+'.'+createHmac('sha256',secret).update(token).digest('base64'));}
 let inflight=0,peak=0;
 async function request(user,path,method='GET',body){
  const begin=performance.now();inflight++;peak=Math.max(peak,inflight);
@@ -56,6 +56,7 @@ try{
  // Allow the new worker to become available; bounded readiness, not counted as load.
  for(let i=0;i<12;i++){const r=await request(null,'/api/submissions');if(r.status===401)break;if(i===11)throw new Error('QA endpoint not ready');await new Promise(r=>setTimeout(r,2000));}
  const unauth=await request(null,'/api/submissions');check(unauth.status,401,'Unauthenticated guard');
+ const sanity=await request(users[0],'/api/auth/get-session');check(sanity.status,200,'Signed session sanity status');check(sanity.body?.user?.id,users[0].id,'Signed session sanity identity');
  await phase('300 concurrent start/resume draft',users,async u=>{const r=await request(u,'/api/submissions','POST',{subgameId:'subgame-ka-fintech'});check(r.status,201,'start');u.draft=r.body.submission;});
  await phase('300 concurrent players autosave 8 answers and read them back',users,async(u)=>{
  for(const question of u.draft.answerForm.questions){const value=question.key==='submission_mode'?'text':`[CLOUDFLARE QA] ${u.id}: ${question.key}`;check((await request(u,`/api/questionnaire-sessions/${u.draft.answerForm.sessionId}/responses`,'PUT',{questionId:question.id,value})).status,200,'save');}
