@@ -22,6 +22,13 @@ export function isRetryableD1Error(error: unknown): boolean {
   return false;
 }
 
+export function databaseBusyResponse(): Response {
+  return Response.json({ code: "DATABASE_BUSY" }, {
+    status: 503,
+    headers: { "Cache-Control": "no-store", "Retry-After": "2" },
+  });
+}
+
 export function withD1RetryableErrorHandling<Args extends unknown[]>(
   handler: (...args: Args) => Promise<Response>,
 ): (...args: Args) => Promise<Response> {
@@ -30,11 +37,8 @@ export function withD1RetryableErrorHandling<Args extends unknown[]>(
       return await handler(...args);
     } catch (error) {
       if (!isRetryableD1Error(error)) throw error;
-      console.warn("D1 transient failure: player request can be retried");
-      return Response.json({ code: "DATABASE_BUSY" }, {
-        status: 503,
-        headers: { "Cache-Control": "no-store", "Retry-After": "2" },
-      });
+      console.warn(isD1Overload(error) ? "D1 queue overloaded: player request can be retried" : "D1 connection lost: player request can be retried");
+      return databaseBusyResponse();
     }
   };
 }
