@@ -46,18 +46,18 @@ export async function PUT(request: Request, context: RouteContext): Promise<Resp
 
   const { sessionId } = await context.params;
   const session = await env.DB.prepare(
-    `SELECT questionnaire_id, completed_at
+    `SELECT questionnaire_id, completed_at, closed_at
        FROM questionnaire_sessions
       WHERE id = ? AND user_id = ?`,
   )
     .bind(sessionId, participant.userId)
-    .first<{ completed_at: string | null; questionnaire_id: string }>();
+    .first<{ closed_at: string | null; completed_at: string | null; questionnaire_id: string }>();
 
   if (!session) {
     return noStoreResponse({ code: "QUESTIONNAIRE_SESSION_NOT_FOUND" }, 404);
   }
 
-  if (session.completed_at) {
+  if (session.completed_at || session.closed_at) {
     return noStoreResponse({ code: "QUESTIONNAIRE_SESSION_COMPLETED" }, 409);
   }
 
@@ -83,7 +83,7 @@ export async function PUT(request: Request, context: RouteContext): Promise<Resp
     await env.DB.prepare(
       `DELETE FROM responses
         WHERE session_id = ? AND question_id = ?
-          AND EXISTS (SELECT 1 FROM questionnaire_sessions WHERE id = ? AND completed_at IS NULL)`,
+          AND EXISTS (SELECT 1 FROM questionnaire_sessions WHERE id = ? AND completed_at IS NULL AND closed_at IS NULL)`,
     )
       .bind(sessionId, question.id, sessionId)
       .run();
@@ -108,7 +108,7 @@ export async function PUT(request: Request, context: RouteContext): Promise<Resp
 
   const result = await env.DB.prepare(
     `INSERT INTO responses (id, session_id, question_id, value_json)
-     SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM questionnaire_sessions WHERE id = ? AND completed_at IS NULL)
+     SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM questionnaire_sessions WHERE id = ? AND completed_at IS NULL AND closed_at IS NULL)
      ON CONFLICT(session_id, question_id) DO UPDATE SET
        value_json = excluded.value_json,
        saved_at = CURRENT_TIMESTAMP`,

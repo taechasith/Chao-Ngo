@@ -49,7 +49,11 @@ export async function GET(request: Request): Promise<Response> {
       `SELECT subgames.id AS subgame_id,
               COUNT(DISTINCT assets.id) AS evidence_total,
               COUNT(DISTINCT CASE WHEN activity_events.event_type = 'evidence_opened' THEN activity_events.asset_id END) AS evidence_viewed,
-              MAX(activity_events.occurred_at) AS last_evidence_at
+              MAX(activity_events.occurred_at) AS last_evidence_at,
+              (SELECT latest.asset_id FROM activity_events latest
+                 JOIN assets visible ON visible.id = latest.asset_id AND visible.player_visible = 1
+                 WHERE latest.user_id = ? AND latest.subgame_id = subgames.id AND latest.event_type = 'evidence_opened'
+                 ORDER BY latest.occurred_at DESC, latest.rowid DESC LIMIT 1) AS last_asset_id
          FROM subgames
          LEFT JOIN assets ON assets.player_visible = 1
           AND (assets.subgame_id = subgames.id OR assets.timeline_node_id = subgames.timeline_node_id)
@@ -57,13 +61,16 @@ export async function GET(request: Request): Promise<Response> {
           AND activity_events.subgame_id = subgames.id
           AND activity_events.event_type = 'evidence_opened'
         GROUP BY subgames.id`,
-    ).bind(participant.userId),
+    ).bind(participant.userId, participant.userId),
     env.DB.prepare(
       `SELECT submissions.subgame_id, submissions.status, submissions.updated_at,
               MAX(CASE WHEN uploads.kind = 'ai_chat_pdf' AND uploads.status IN ('uploaded', 'accepted') THEN 1 ELSE 0 END) AS ai_pdf_uploaded
          FROM submissions
          LEFT JOIN uploads ON uploads.submission_id = submissions.id
         WHERE submissions.user_id = ?
+          AND submissions.id = (SELECT latest.id FROM submissions latest
+            WHERE latest.user_id = submissions.user_id AND latest.subgame_id = submissions.subgame_id
+            ORDER BY latest.created_at DESC, latest.rowid DESC LIMIT 1)
         GROUP BY submissions.id
         ORDER BY submissions.updated_at DESC`,
     ).bind(participant.userId),

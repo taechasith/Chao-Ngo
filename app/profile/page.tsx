@@ -12,7 +12,7 @@ import { Panel, StatusBadge } from "../../components/player/panel";
 import { InvestigativeAction } from "../../components/player/investigative-action";
 
 type ProgressItem = { completed_at: string | null; game_slug: string; last_activity_at?: string | null; status: string; subgame_id: string; subgame_slug?: string; subgame_title: string };
-type EvidenceItem = { evidence_total: number; evidence_viewed: number; last_evidence_at: string | null; subgame_id: string };
+type EvidenceItem = { evidence_total: number; evidence_viewed: number; last_evidence_at: string | null; last_asset_id?: string | null; subgame_id: string };
 type SubmissionItem = { ai_pdf_uploaded: number; status: string; subgame_id: string; updated_at: string };
 type ProfileData = {
   achievements: Array<{ achievement_key: string; earned_at: string; subgame_id?: string }>;
@@ -131,7 +131,7 @@ function ProfileContent() {
 function LegacyCaseRecord({ active = false, evidence, item, submission }: { active?: boolean; evidence?: EvidenceItem; item: ProgressItem; submission?: SubmissionItem }) {
   const slug = item.subgame_slug === "quantum" || item.subgame_slug === "space" ? item.subgame_slug : null;
   const evidenceText = evidence && evidence.evidence_total > 0 ? `หลักฐาน ${Math.min(evidence.evidence_viewed, evidence.evidence_total)} / ${evidence.evidence_total}` : "หลักฐานยังไม่มีข้อมูล";
-  return <article className={`player-case-record${active ? " player-case-record--active" : ""}`}><div className="player-case-record-thumb">{slug ? <Image alt="" fill sizes="(max-width: 496px) 100vw, 240px" src={caseImages[slug]} /> : null}</div><div className="player-case-record-copy"><span className="player-eyebrow">{active ? "ACTIVE CASE" : "ARCHIVE"}</span><h3>{slug === "quantum" ? "THE CORRECT TRAJECTORY" : slug === "space" ? "THIRTEEN DAYS IN UTOPIA" : item.subgame_title}</h3><p>{caseLabel(item)} · {statusLabel(item.status)}</p><span>{evidenceText} · กิจกรรมล่าสุด {formatDate(item.last_activity_at)}</span>{submission ? <span>การส่ง: {statusLabel(submission.status)}</span> : null}<div className="player-case-record-actions">{slug ? <><InvestigativeAction href={`/play/node-zone/${slug}`}>{active ? "เล่นต่อ" : "เปิดแฟ้ม"}</InvestigativeAction>{evidence?.last_evidence_at ? <Link className="player-button" href={`/play/node-zone/${slug}#evidence`}>เปิดหลักฐานล่าสุด</Link> : null}</> : null}</div></div></article>;
+  return <article className={`player-case-record${active ? " player-case-record--active" : ""}`}><div className="player-case-record-thumb">{slug ? <Image alt="" fill sizes="(max-width: 496px) 100vw, 240px" src={caseImages[slug]} /> : null}</div><div className="player-case-record-copy"><span className="player-eyebrow">{active ? "ACTIVE CASE" : "ARCHIVE"}</span><h3>{slug === "quantum" ? "THE CORRECT TRAJECTORY" : slug === "space" ? "THIRTEEN DAYS IN UTOPIA" : item.subgame_title}</h3><p>{caseLabel(item)} · {statusLabel(item.status)}</p><span>{evidenceText} · กิจกรรมล่าสุด {formatDate(item.last_activity_at)}</span>{submission ? <span>การส่ง: {statusLabel(submission.status)}</span> : null}<div className="player-case-record-actions">{slug ? <><InvestigativeAction href={`/play/node-zone/${slug}`}>{active ? "เล่นต่อ" : "เปิดแฟ้ม"}</InvestigativeAction>{evidence?.last_evidence_at ? <Link className="player-button" href={`/play/node-zone/${slug}${evidence.last_asset_id ? `?evidence=${encodeURIComponent(evidence.last_asset_id)}` : ""}#evidence`}>เปิดหลักฐานล่าสุด</Link> : null}</> : null}</div></div></article>;
 }
 
 function CaseRecord({ active = false, evidence, item, submission }: { active?: boolean; evidence?: EvidenceItem; item: ProgressItem; submission?: SubmissionItem }) {
@@ -167,7 +167,7 @@ function CaseRecord({ active = false, evidence, item, submission }: { active?: b
       {submission ? <span>การส่ง: {statusLabel(submission.status)}</span> : null}
       <div className="player-case-record-actions">
         <InvestigativeAction href={route}>{active ? "เล่นต่อ" : "เปิดแฟ้ม"}</InvestigativeAction>
-        {evidence?.last_evidence_at ? <Link className="player-button" href={`${route}#evidence`}>เปิดหลักฐานล่าสุด</Link> : null}
+        {evidence?.last_evidence_at ? <Link className="player-button" href={`${route}${evidence.last_asset_id ? `?evidence=${encodeURIComponent(evidence.last_asset_id)}` : ""}#evidence`}>เปิดหลักฐานล่าสุด</Link> : null}
       </div>
     </div>
   </article>;

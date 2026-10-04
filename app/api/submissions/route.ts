@@ -36,6 +36,7 @@ type SubmissionRow = {
   posttest_session_id: string | null;
   questionnaire_session_id: string | null;
   status: string;
+  reviewer_note: string | null;
   subgame_id: string;
   user_id: string;
 };
@@ -143,6 +144,7 @@ async function loadSubmission(row: SubmissionRow) {
     posttestForm,
     requirements: clientRequirements(requirements),
     status: row.status,
+    reviewerNote: row.reviewer_note,
     submissionId: row.id,
     // Kept for current API consumers while the client moves to explicit upload kinds.
     upload: aiChatPdf ?? null,
@@ -155,7 +157,7 @@ async function loadSubmission(row: SubmissionRow) {
 
 async function getDraft(userId: string, subgameId: string) {
   const row = await env.DB.prepare(
-    `SELECT id, posttest_session_id, questionnaire_session_id, status, subgame_id, user_id
+    `SELECT id, posttest_session_id, questionnaire_session_id, status, reviewer_note, subgame_id, user_id
        FROM submissions
       WHERE user_id = ? AND subgame_id = ?
       ORDER BY created_at DESC, rowid DESC

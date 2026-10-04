@@ -58,7 +58,7 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
   const { sessionId } = await context.params;
   const session = await env.DB.prepare(
     `SELECT questionnaire_sessions.questionnaire_id,
-            questionnaire_sessions.completed_at,
+            questionnaire_sessions.completed_at, questionnaire_sessions.closed_at,
             questionnaires.questionnaire_key,
             questionnaires.version AS questionnaire_version
        FROM questionnaire_sessions
@@ -67,7 +67,7 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
   )
     .bind(sessionId, participant.userId)
     .first<{
-      completed_at: string | null;
+      completed_at: string | null; closed_at: string | null;
       questionnaire_id: string;
       questionnaire_key: string;
       questionnaire_version: string;
@@ -86,16 +86,14 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
       .bind(sessionId)
       .first<{ recommended_subgame_id: string; score_json: string }>();
 
+    const scores = existing ? parseStoredValue(existing.score_json) as { candidates?: Array<{ subgameId: string }> } | null : null;
     return noStoreResponse({
-      recommendation: existing
-        ? {
-            recommendedSubgameId: existing.recommended_subgame_id,
-            scores: parseStoredValue(existing.score_json),
-          }
-        : null,
+      recommendation: scores?.candidates?.find(item => item.subgameId === existing?.recommended_subgame_id) ?? null,
       status: "already_completed",
     });
   }
+
+  if (session.closed_at) return noStoreResponse({ code: "QUESTIONNAIRE_SESSION_COMPLETED" }, 409);
 
   if (session.questionnaire_key !== "pregame") {
     const rows = await env.DB.prepare(
@@ -132,7 +130,7 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     await env.DB.batch([
       env.DB.prepare(
         `UPDATE questionnaire_sessions SET completed_at = CURRENT_TIMESTAMP
-          WHERE id = ? AND user_id = ? AND completed_at IS NULL`,
+          WHERE id = ? AND user_id = ? AND completed_at IS NULL AND closed_at IS NULL`,
       ).bind(sessionId, participant.userId),
       env.DB.prepare(
         `INSERT INTO activity_events (id, event_id, user_id, event_type, payload_json)
@@ -286,7 +284,7 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     `UPDATE questionnaire_sessions
         SET completed_at = CURRENT_TIMESTAMP,
             score_json = ?
-      WHERE id = ? AND user_id = ? AND completed_at IS NULL`,
+      WHERE id = ? AND user_id = ? AND completed_at IS NULL AND closed_at IS NULL`,
   ).bind(
     JSON.stringify({
       instrumentVersion: session.questionnaire_version,
