@@ -12,7 +12,7 @@ Production uses the shared `chao-ngo` D1 database. The dashboard member needs D1
 4. Run `node scripts/check-game-data.mjs --remote`. It prints schema readiness, aggregate record counts and missing-session counts; it never prints emails, answers or secret values. Production CI stops before deployment if access or schema is missing.
 5. Deploy the player and admin changes after the checks pass. The admin config targets `chaongoadmin.creativelabth.com` only; it must not claim the player domain.
 
-Manual runs of `Deploy Chao Ngo` on feature branches default to read-only inspections: they list pending migrations and report schema, aggregate counts and integrity using the existing deployment token. Operation `migrate` additionally applies only reviewed 0014/0015 migrations after checking the ledger agrees with the schema, then checks retained record counts and readiness. Feature-branch runs never deploy. Main-branch runs retain the schema guard and deployment behavior.
+Manual runs of `Deploy Chao Ngo` default to read-only inspections on every branch, including main: they list the migration ledger and report schema, aggregate counts and integrity using the existing deployment token. Operation `migrate` additionally applies only reviewed 0014/0015 migrations after checking the ledger agrees with the schema, then checks retained record counts and readiness. Operation `deploy` deploys main only; main pushes also deploy automatically. Production operations queue rather than cancel an in-progress migration.
 
 ## Production verification
 

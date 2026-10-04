@@ -7,24 +7,25 @@ on:
   workflow_dispatch:
     inputs:
       operation:
-        description: Inspect production or apply the two reviewed game migrations
+        description: Inspect data, apply reviewed game migrations, or deploy main
         type: choice
         default: inspect
         options:
           - inspect
           - migrate
+          - deploy
 
 permissions:
   contents: read
 
 concurrency:
   group: chao-ngo-production
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   inspect-data:
-    # Manual runs on feature branches inspect production without deploying.
-    if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
+    # Inspection never deploys, including when it is requested on main.
+    if: github.event_name == 'workflow_dispatch' && inputs.operation != 'deploy'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -37,8 +38,6 @@ jobs:
       - name: Read migration ledger, schema and aggregate game data
         run: |
           npx wrangler d1 migrations list DB --remote
-          npx wrangler d1 execute DB --remote --command "SELECT name FROM sqlite_master WHERE type = 'table'" --json
-          npx wrangler d1 execute DB --remote --command "SELECT COUNT(*) AS saved_profiles FROM user_profiles" --json
           node scripts/check-game-data.mjs --remote --report-only
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -53,7 +52,7 @@ jobs:
           WRANGLER_LOG_PATH: ${{ runner.temp }}/chao-ngo-game-migrations.log
 
   deploy:
-    if: github.event_name == 'push' || github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' || (inputs.operation == 'deploy' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 20
 

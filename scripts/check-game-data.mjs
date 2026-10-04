@@ -18,6 +18,8 @@ const queries = [
   `SELECT COUNT(*) AS submissions_missing_answer_session FROM submissions s
      LEFT JOIN questionnaire_sessions qs ON qs.id = s.questionnaire_session_id
     WHERE s.questionnaire_session_id IS NOT NULL AND qs.id IS NULL`,
+  "SELECT name FROM d1_migrations ORDER BY id",
+  "PRAGMA table_info(questions)",
 ];
 const results = [];
 for (const query of queries) {
@@ -40,7 +42,7 @@ for (const query of queries) {
 }
 const rows = results.map(result => result.flatMap(item => item.results ?? []));
 if (reportOnly) {
-  console.log(JSON.stringify({ environment: remote ? "production" : "local", profileColumns: rows[0].map(row => row.name), counts: rows[1], submissionColumns: rows[2].map(row => row.name), questionnaireSessionColumns: rows[3].map(row => row.name), integrity: rows[4] }, null, 2));
+  console.log(JSON.stringify({ environment: remote ? "production" : "local", profileColumns: rows[0].map(row => row.name), counts: rows[1], submissionColumns: rows[2].map(row => row.name), questionnaireSessionColumns: rows[3].map(row => row.name), integrity: rows[4], appliedMigrations: rows[5].map(row => row.name), questionColumns: rows[6].map(row => row.name) }, null, 2));
   process.exit(0);
 }
 if (!rows[0].some(column => column.name === "personal_skills_json")) {
