@@ -279,6 +279,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
 
   async function completeForm(form: QuestionForm | null, requiredQuestionKeys: string[] = []): Promise<boolean> {
     if (!form || form.completed || completedSessions.current.has(form.sessionId)) return true;
+    setMessage("");
     const missingText = form.questions.some((question) => {
       if (!requiredQuestionKeys.includes(question.key)) return false;
       const value = answersRef.current[question.id];
@@ -289,12 +290,24 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
       return false;
     }
     if (!(await saver.flush(form.sessionId))) return false;
-    const response = await fetch(`/api/questionnaire-sessions/${form.sessionId}/complete`, {
-      credentials: "same-origin",
-      method: "POST",
-    });
-    if (!response.ok) {
-      setMessage("ตอบคำถามที่จำเป็นให้ครบก่อนดำเนินการต่อ");
+    try {
+      const response = await fetch(`/api/questionnaire-sessions/${form.sessionId}/complete`, {
+        credentials: "same-origin",
+        method: "POST",
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({})) as { code?: string };
+        setMessage(response.status === 401 || result.code === "UNAUTHENTICATED"
+          ? "กรุณาเข้าสู่ระบบอีกครั้ง แล้วลองบันทึกแบบสอบถามใหม่ คำตอบของคุณยังอยู่"
+          : response.status >= 500
+            ? "ระบบยังบันทึกแบบสอบถามไม่ได้ กรุณาลองอีกครั้งภายหลัง คำตอบของคุณยังอยู่"
+            : result.code === "QUESTIONNAIRE_INCOMPLETE"
+              ? "ตอบคำถามที่จำเป็นให้ครบก่อนดำเนินการต่อ"
+              : thaiError(result.code ?? ""));
+        return false;
+      }
+    } catch {
+      setMessage("เชื่อมต่อระบบไม่ได้ ลองบันทึกแบบสอบถามอีกครั้งเมื่อเครือข่ายพร้อม คำตอบของคุณยังอยู่");
       return false;
     }
     completedSessions.current.add(form.sessionId);
@@ -571,6 +584,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
           key={submission.answerForm.sessionId}
           onChange={changeAnswer}
           onComplete={completeForm}
+          errorMessage={message}
           requiredQuestionKeys={submission.requirements.requiredAnswerQuestionKeys}
           sectionId="submission-stage-answer"
           stage="02"
@@ -602,6 +616,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
           key={submission.posttestForm.sessionId}
           onChange={changeAnswer}
           onComplete={completeForm}
+          errorMessage={message}
           sectionId="submission-stage-posttest"
           stage="03"
         />
@@ -654,6 +669,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
 function QuestionnairePanel({
   answers,
   form,
+  errorMessage,
   guideTarget,
   onChange,
   onComplete,
@@ -663,6 +679,7 @@ function QuestionnairePanel({
 }: {
   answers: Record<string, unknown>;
   form: QuestionForm;
+  errorMessage: string;
   guideTarget: string;
   onChange: (sessionId: string, questionId: string, value: unknown) => void;
   onComplete: (form: QuestionForm, requiredQuestionKeys?: string[]) => Promise<boolean>;
@@ -722,7 +739,7 @@ function QuestionnairePanel({
           );
         })}
       </div>
-      {saveError ? <p className="mt-4 text-sm text-red-200" role="alert">ยังบันทึกส่วนนี้ไม่ได้ ตรวจคำตอบที่จำเป็นและการเชื่อมต่อ แล้วลองอีกครั้ง</p> : null}
+      {saveError ? <p className="mt-4 text-sm text-red-200" role="alert">{errorMessage || "ยังบันทึกส่วนนี้ไม่ได้ กรุณาลองอีกครั้ง"}</p> : null}
       <button className="player-button mt-6 w-full sm:w-auto" disabled={saving || complete} onClick={async () => {
         setSaving(true);
         setSaveError(false);
