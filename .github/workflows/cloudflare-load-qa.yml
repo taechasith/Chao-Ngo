@@ -1,4 +1,4 @@
-name: D1 overload fix: isolated 300-player QA
+name: "D1 overload fix: isolated 300-player QA"
 on:
   push:
     branches: [codex/d1-overload-qa-20261005]
