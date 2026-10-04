@@ -170,4 +170,23 @@ export async function getSubmissionRequirements(
   }
 }
 
+/** Read requirements once for a completion calculation, with bound subgame IDs. */
+export async function getSubmissionRequirementsForSubgames(
+  database: D1Database,
+  subgameIds: string[],
+): Promise<Map<string, SubmissionRequirements>> {
+  const ids = [...new Set(subgameIds)];
+  const requirements = new Map(ids.map(id => [id, fallbackSubmissionRequirements(id)]));
+  if (!ids.length) return requirements;
+  try {
+    const rows = await database.prepare(
+      `SELECT * FROM subgame_submission_requirements WHERE subgame_id IN (${ids.map(() => "?").join(",")})`,
+    ).bind(...ids).all<RequirementRow & { subgame_id: string }>();
+    for (const row of rows.results) requirements.set(row.subgame_id, requirementsFromRow(row.subgame_id, row));
+  } catch (error) {
+    if (!isMissingRequirementsTable(error)) throw error;
+  }
+  return requirements;
+}
+
 export { maximumPrivateUploadBytes, supportedAnswerAttachmentExtensions };

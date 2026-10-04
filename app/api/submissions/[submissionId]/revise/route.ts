@@ -1,3 +1,4 @@
+import { withD1OverloadHandling } from "../../../../../lib/server/d1-overload";
 import { env } from "cloudflare:workers";
 import { requireResearchParticipant } from "../../../../../lib/server/research-access";
 import { isSameOriginRequest } from "../../../../../lib/server/request-security";
@@ -6,7 +7,7 @@ import { isWithinPlayerMutationLimit } from "../../../../../lib/server/request-l
 export const dynamic = "force-dynamic";
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 
-export async function POST(request: Request, context: { params: Promise<{ submissionId: string }> }) {
+async function handlePOST(request: Request, context: { params: Promise<{ submissionId: string }> }) {
   if (!isSameOriginRequest(request)) return json({ code: "CROSS_ORIGIN_REQUEST" }, 403);
   const player = await requireResearchParticipant(request);
   if (player instanceof Response) return player;
@@ -49,3 +50,5 @@ export async function POST(request: Request, context: { params: Promise<{ submis
   catch (error) { const raced = await child(); if (raced) return json({ submissionId: raced.id, status: "resumed" }); throw error; }
   return json({ submissionId: id, status: "created" }, 201);
 }
+
+export const POST = withD1OverloadHandling(handlePOST);

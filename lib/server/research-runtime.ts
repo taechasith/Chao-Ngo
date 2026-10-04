@@ -2,15 +2,16 @@ import { env } from "cloudflare:workers";
 
 import { approvedResearchConsentText } from "./research-consent-copy";
 import { researchCollectionPolicy } from "./research-policy";
-import { getResearchRetentionYears } from "./research-retention";
+import { researchRetentionYearsFromValue } from "./research-retention";
 
 export async function getResearchCollectionPolicy() {
-  const flag = await env.DB.prepare("SELECT value FROM app_metadata WHERE key = 'research_collection_enabled'")
-    .first<{ value: string }>();
+  const rows = await env.DB.prepare("SELECT key, value FROM app_metadata WHERE key IN ('research_collection_enabled', 'research_retention_years')")
+    .all<{ key: string; value: string }>();
+  const settings = new Map(rows.results.map(row => [row.key, row.value]));
   return {
     ...researchCollectionPolicy,
-    enabled: flag?.value === "true",
+    enabled: settings.get("research_collection_enabled") === "true",
     privateStorageReady: Boolean(env.PRIVATE_UPLOADS),
-    retentionAndWithdrawalPolicy: approvedResearchConsentText(await getResearchRetentionYears()),
+    retentionAndWithdrawalPolicy: approvedResearchConsentText(researchRetentionYearsFromValue(settings.get("research_retention_years"))),
   };
 }
