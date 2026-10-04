@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 
 // Read-only. Report counts/column names only; never answer bodies, emails or keys.
 const remote = process.argv.includes("--remote");
+const reportOnly = process.argv.includes("--report-only");
 const queries = [
   "SELECT name FROM pragma_table_info('user_profiles')",
   `SELECT 'accounts' AS record_type, COUNT(*) AS stored_records FROM "user"
@@ -31,6 +32,10 @@ for (const query of queries) {
   catch { throw new Error("Unexpected D1 result format; no data was changed."); }
 }
 const rows = results.map(result => result.flatMap(item => item.results ?? []));
+if (reportOnly) {
+  console.log(JSON.stringify({ environment: remote ? "production" : "local", profileColumns: rows[0], counts: rows[1], submissionColumns: rows[2], questionnaireSessionColumns: rows[3], integrity: rows[4] }, null, 2));
+  process.exit(0);
+}
 if (!rows[0].some(column => column.name === "personal_skills_json")) {
   console.error("Missing profile migration 0014_research_profile_skills.sql. Apply reviewed D1 migrations before deploying.");
   process.exit(1);

@@ -12,6 +12,8 @@ Production uses the shared `chao-ngo` D1 database. The dashboard member needs D1
 4. Run `node scripts/check-game-data.mjs --remote`. It prints schema readiness, aggregate record counts and missing-session counts; it never prints emails, answers or secret values. Production CI stops before deployment if access or schema is missing.
 5. Deploy the player and admin changes after the checks pass. The admin config targets `chaongoadmin.creativelabth.com` only; it must not claim the player domain.
 
+Manual runs of `Deploy Chao Ngo` on feature branches are read-only inspections: they list pending migrations and report schema, aggregate counts and integrity using the existing deployment token. They do not apply migrations or deploy. Main-branch runs retain the schema guard and deployment behavior.
+
 ## Production verification
 
 Use the authorized synthetic QA account. Verify Google login, onboarding resume after reload, profile edits and rereads, evidence/PDF reading, immediate navigation after typing, clearing an answer, all four case submissions, private file uploads and admin downloads. Then review a synthetic submission as needs_revision, create its new draft, resend it and accept it. Compare the old and new answer records; do not overwrite the originals.
