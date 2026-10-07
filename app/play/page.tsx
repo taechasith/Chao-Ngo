@@ -7,7 +7,7 @@ import { getPlayerCatalog } from "../../lib/server/content/player-catalog";
 
 const artwork: Record<string, { image: string; number: string; description: string }> = {
   "node-zone": { image: "/node-zone-hero/pre-case/AIenhanceCCTV_Zoom.png", number: "01", description: "บางสิ่งอธิบายได้ด้วยวิทยาศาสตร์ บางสิ่งยังต้องตามหา เชื่อมร่องรอยผ่านคดีควอนตัมและอวกาศ" },
-  "ka-casefiles": { image: "/ka-casefiles/maimee/scene-01.png", number: "02", description: "ย้อนรอยเหตุการณ์ใน NetLood City ผ่านหลักฐาน ผู้คน และระบบที่อยู่เบื้องหลังความสูญเสีย" },
+  "ka-casefiles": { image: "/ka-casefiles/v2/maimee/scene-02.png", number: "02", description: "ย้อนรอยเหตุการณ์ใน NetLood City ผ่านหลักฐาน ผู้คน และระบบที่อยู่เบื้องหลังความสูญเสีย" },
 };
 
 export default async function PlayPage() {
