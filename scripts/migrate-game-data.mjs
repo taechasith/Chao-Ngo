@@ -28,6 +28,7 @@ const countsSql = `SELECT (SELECT COUNT(*) FROM responses) AS answers,
 const before = query(countsSql);
 console.log(JSON.stringify({ pendingReviewedMigrations: pending, preservedRecordCountsBefore: before }));
 if (pending.includes("0017_ka_casefiles_v2.sql")) {
+  console.log(JSON.stringify({ previousKaAssetVisibility: query("SELECT id, player_visible FROM assets WHERE timeline_node_id IN ('timeline-ka-netlood-city','timeline-ka-personnel','timeline-ka-maimee','timeline-ka-wa-ve') ORDER BY id") }));
   const assetsCheck = spawnSync(process.execPath, ["scripts/ka-v2-assets.mjs", "--verify-remote"], { stdio: "inherit" });
   if (assetsCheck.status !== 0) throw new Error("V2 CDN assets are missing or differ from the approved originals; do not switch player content.");
 }

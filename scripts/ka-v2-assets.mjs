@@ -15,7 +15,7 @@ for (const asset of assets) {
   if (bytes.length !== asset.bytes || createHash("sha256").update(bytes).digest("hex") !== asset.checksum) {
     throw new Error("Local original differs from manifest: " + asset.id);
   }
-  if (!/^games\/ka-casefiles\/(maimee|wa-ve|personnel)\/[a-f0-9]{64}\.(pdf|png|txt)$/.test(asset.r2Key) ||
+  if (!/^games\/ka-casefiles\/(maimee|wa-ve|personnel)\/v2\/[a-f0-9]{64}\.(pdf|png|txt)$/.test(asset.r2Key) ||
       asset.url !== "https://cdn.creativelabth.com/" + asset.r2Key) throw new Error("Unexpected public asset destination");
 }
 if (args.has("--upload")) {
