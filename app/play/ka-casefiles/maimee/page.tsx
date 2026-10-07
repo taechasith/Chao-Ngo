@@ -5,7 +5,7 @@ export default function KaMaimeePage() {
     <KaCaseInteriorPage
       caseSlug="maimee"
       description="วิเคราะห์ห่วงโซ่เหตุการณ์จากหลักฐานทางกายภาพ ดิจิทัล การเงิน และไทม์ไลน์ แล้วออกแบบระบบที่อาจช่วยให้ความสูญเสียลักษณะนี้เกิดขึ้นยากขึ้น"
-      image="/ka-casefiles/maimee/scene-01.png"
+      image="/ka-casefiles/v2/maimee/scene-02.png"
       imageAlt="ภาพถ่ายจากคดี MAIMEE"
       instructions={[
         { title: "เริ่มจากสิ่งที่ยืนยันได้", body: "เปรียบเทียบรายละเอียดในภาพ บันทึก และรายงานโดยไม่รีบสรุปจากหลักฐานชิ้นเดียว" },

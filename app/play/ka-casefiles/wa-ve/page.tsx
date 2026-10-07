@@ -5,8 +5,8 @@ export default function KaWaVePage() {
     <KaCaseInteriorPage
       caseSlug="wa-ve"
       description="ตรวจสอบความเชื่อมโยงระหว่างข้อมูลทางชีวภาพ พฤติกรรม การเข้าถึงระบบ และบันทึกการสื่อสาร เพื่อสร้างคำอธิบายที่เปิดรับความไม่แน่นอน"
-      image="/ka-casefiles/personnel/tete-techametakun.png"
-      imageAlt="แฟ้มบุคลากรจากคดี WA VE"
+      image="/ka-casefiles/v2/wa-ve/cctv-01.png"
+      imageAlt="ภาพ CCTV ในห้อง Lab 2 จากคดี WA VE"
       instructions={[
         { title: "แยกข้อมูลจากคำตีความ", body: "อ่านรายงานและบันทึกแต่ละชิ้นว่าไฟล์ยืนยันอะไรได้ และมีข้อจำกัดอะไร" },
         { title: "เชื่อมหลักฐานต่างประเภท", body: "เปรียบเทียบหลักฐานทางชีวภาพ ดิจิทัล และพฤติกรรมโดยไม่ให้ประเภทใดประเภทหนึ่งตัดสินแทนทั้งหมด" },

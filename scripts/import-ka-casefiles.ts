@@ -20,6 +20,10 @@ import { assetKindForExtension, contentTypeForExtension } from "../lib/server/co
 
 config({ path: ".env.local" });
 
+if (!process.argv.includes("--legacy-v1")) {
+  throw new Error("The V1 importer is archived. Use scripts/ka-v2-assets.mjs and migration 0017 for current content. Pass --legacy-v1 only for a deliberate V1 restoration.");
+}
+
 const sourceRoot = process.env.NETLOOD_CITY_ASSET_ROOT ?? "C:\\Users\\HP OMEN\\Downloads\\NETLOOD CITY";
 const localPublicRoot = resolve(import.meta.dirname, "../public/ka-casefiles");
 

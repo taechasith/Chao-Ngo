@@ -26,11 +26,11 @@ type ProfileData = {
 };
 
 const caseImages: Record<string, string> = {
-  fintech: "/ka-casefiles/maimee/scene-01.png",
-  maimee: "/ka-casefiles/maimee/scene-01.png",
+  fintech: "/ka-casefiles/v2/maimee/scene-02.png",
+  maimee: "/ka-casefiles/v2/maimee/scene-02.png",
   quantum: "/node-zone-hero/quantum/AIenhance_CCTV.png",
   space: "/node-zone-hero/space/AIenhance_CCTV.png",
-  "wa-ve": "/ka-casefiles/personnel/tete-techametakun.png",
+  "wa-ve": "/ka-casefiles/v2/wa-ve/cctv-01.png",
 };
 
 const legacyKaSubgameIds = new Set(["subgame-ka-psychology", "subgame-ka-biotech"]);

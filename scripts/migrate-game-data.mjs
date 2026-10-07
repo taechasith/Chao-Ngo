@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import process from "node:process";
 import console from "node:console";
 
-const reviewed = ["0014_research_profile_skills.sql", "0015_submission_reviews.sql", "0016_submission_lookup_index.sql"];
+const reviewed = ["0014_research_profile_skills.sql", "0015_submission_reviews.sql", "0016_submission_lookup_index.sql", "0017_ka_casefiles_v2.sql"];
 function query(sql) {
   const result = spawnSync(process.execPath, ["node_modules/wrangler/bin/wrangler.js", "d1", "execute", "DB", "--remote", "--command", sql, "--json"], { encoding: "utf8" });
   if (result.status !== 0) throw new Error("Production D1 preflight query failed; stop without applying migrations.");
@@ -27,6 +27,10 @@ const countsSql = `SELECT (SELECT COUNT(*) FROM responses) AS answers,
   (SELECT COUNT(*) FROM uploads) AS uploads`;
 const before = query(countsSql);
 console.log(JSON.stringify({ pendingReviewedMigrations: pending, preservedRecordCountsBefore: before }));
+if (pending.includes("0017_ka_casefiles_v2.sql")) {
+  const assetsCheck = spawnSync(process.execPath, ["scripts/ka-v2-assets.mjs", "--verify-remote"], { stdio: "inherit" });
+  if (assetsCheck.status !== 0) throw new Error("V2 CDN assets are missing or differ from the approved originals; do not switch player content.");
+}
 if (pending.length) {
   const result = spawnSync(process.execPath, ["node_modules/wrangler/bin/wrangler.js", "d1", "migrations", "apply", "DB", "--remote"], { stdio: ["pipe", "inherit", "inherit"], input: "y\n" });
   if (result.status !== 0) throw new Error("Migration failed; inspect the ledger before retrying.");

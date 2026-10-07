@@ -59,7 +59,7 @@ export function KaCasefilesOverview({ cases, unavailable }: { cases: PlayerCase[
             fill
             priority
             sizes="(max-width: 864px) 100vw, 50vw"
-            src="/ka-casefiles/maimee/scene-01.png"
+            src="/ka-casefiles/v2/maimee/scene-02.png"
           />
           <div className="player-route-card-content">
             <span className="player-eyebrow">NETLOOD CITY / FINTECH</span>
@@ -72,11 +72,11 @@ export function KaCasefilesOverview({ cases, unavailable }: { cases: PlayerCase[
 
         {canPlay(kaSubgames["wa-ve"].id) ? <Link className="player-route-card" href={kaSubgames["wa-ve"].route}>
           <Image
-            alt="ภาพบุคลากรจากแฟ้มคดี WA VE"
+            alt="ภาพ CCTV จากแฟ้มคดี WA VE"
             className="player-case-image"
             fill
             sizes="(max-width: 864px) 100vw, 50vw"
-            src="/ka-casefiles/personnel/tete-techametakun.png"
+            src="/ka-casefiles/v2/wa-ve/cctv-01.png"
           />
           <div className="player-route-card-content">
             <span className="player-eyebrow">NETLOOD CITY / BIO</span>

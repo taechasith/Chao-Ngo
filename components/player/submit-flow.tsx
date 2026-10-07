@@ -90,7 +90,7 @@ const selectableCases: SubmissionCase[] = [
   {
     eyebrow: "K.A. CASEFILES / NETLOOD CITY",
     id: "subgame-ka-fintech",
-    image: "/ka-casefiles/maimee/scene-01.png",
+    image: "/ka-casefiles/v2/maimee/scene-02.png",
     route: "/play/ka-casefiles/maimee",
     subtitle: "FinTech",
     title: "คดี MAIMEE",
@@ -98,7 +98,7 @@ const selectableCases: SubmissionCase[] = [
   {
     eyebrow: "K.A. CASEFILES / NETLOOD CITY",
     id: "subgame-ka-wa-ve",
-    image: "/ka-casefiles/personnel/tete-techametakun.png",
+    image: "/ka-casefiles/v2/wa-ve/cctv-01.png",
     route: "/play/ka-casefiles/wa-ve",
     subtitle: "Bio",
     title: "คดี WA VE",
