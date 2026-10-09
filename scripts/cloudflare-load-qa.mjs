@@ -8,12 +8,14 @@ const account='c24fed68f8dc59cc339bd821d215bba8',api='https://api.cloudflare.com
 const run=process.env.GITHUB_RUN_ID||'manual';
 if(!/^\d+$/.test(run))throw new Error('Run only from GitHub Actions');
 const scenario=process.env.QA_SCENARIO||'mixed';
-if(!['mixed','all-ka'].includes(scenario))throw new Error('Invalid scenario');
+if(!['mixed','all-ka','refresh-probe'].includes(scenario))throw new Error('Invalid scenario');
+const refreshMode=process.env.QA_REFRESH_MODE||'stress';
+if(!['stress','off','probe'].includes(refreshMode))throw new Error('Invalid refresh mode');
 const name=`chao-ngo-qa-${run}-${scenario}`,dbName=name,bucketName=name;
-const report={scope:'Remote Cloudflare Worker/D1/R2, latest production application code, unchanged; 300 players with real PDFs and revision polling, real Better Auth session verification; synthetic QA identities, NOT 300 Google OAuth logins',source:process.env.GITHUB_SHA,productionSource:process.env.PRODUCTION_SOURCE,scenario,run,startedAt:new Date().toISOString(),phases:[],requests:[],resources:{worker:name,database:dbName,bucket:bucketName},cleanup:[]};
+const report={scope:'Remote Cloudflare Worker/D1/R2, latest production application code, unchanged; 300 players with real PDFs and revision polling, real Better Auth session verification; synthetic QA identities, NOT 300 Google OAuth logins',source:process.env.GITHUB_SHA,productionSource:process.env.PRODUCTION_SOURCE,scenario,refreshMode,run,startedAt:new Date().toISOString(),phases:[],requests:[],resources:{worker:name,database:dbName,bucket:bucketName},cleanup:[]};
 let dbId,origin,createdWorker=false,createdBucket=false,users=[],uploads=[],tailProcess,polling,stopPolling=false;
 let peakDriverRss=0;const rssTimer=setInterval(()=>{peakDriverRss=Math.max(peakDriverRss,process.memoryUsage().rss);},1000);
-report.cloudflareExceptions=[];report.autosaveRetries=[];
+report.cloudflareExceptions=[];report.cloudflareWarnings=[];report.tailOutcomes={};report.autosaveRetries=[];
 const secret=randomBytes(48).toString('base64url');
 console.log(`::add-mask::${secret}`);
 await mkdir('qa-results',{recursive:true});
@@ -49,7 +51,7 @@ try{
  await writeFile('wrangler.qa.json',JSON.stringify(config));
  cli(['d1','migrations','apply','DB','--remote','--config','wrangler.qa.json']);
  await query("UPDATE app_metadata SET value='true' WHERE key='research_collection_enabled'");
- users=Array.from({length:300},(_,i)=>{const token=randomUUID();console.log(`::add-mask::${token}`);return {id:`remote-qa-${run}-${scenario}-${String(i).padStart(3,'0')}`,subgameId:(scenario==='mixed'?['subgame-ka-fintech','subgame-ka-wa-ve','subgame-node-zone-quantum','subgame-node-zone-space']:['subgame-ka-fintech','subgame-ka-wa-ve'])[i%(scenario==='mixed'?4:2)],token,cookie:signed(token),expected:{},files:[]};});
+ users=Array.from({length:300},(_,i)=>{const token=randomUUID();console.log(`::add-mask::${token}`);return {id:`remote-qa-${run}-${scenario}-${String(i).padStart(3,'0')}`,subgameId:(scenario!=='all-ka'?['subgame-ka-fintech','subgame-ka-wa-ve','subgame-node-zone-quantum','subgame-node-zone-space']:['subgame-ka-fintech','subgame-ka-wa-ve'])[i%(scenario!=='all-ka'?4:2)],token,cookie:signed(token),expected:{},files:[]};});
  const now=Date.now();
  await query(`INSERT INTO "user" (id,name,email,emailVerified,createdAt,updatedAt) VALUES ${users.map(u=>`(${q(u.id)},'CLOUDFLARE SYNTHETIC QA',${q(u.id+'@example.test')},1,${now},${now})`).join(',')}`);
  await query(`INSERT INTO session (id,token,userId,expiresAt,createdAt,updatedAt) VALUES ${users.map(u=>`(${q(randomUUID())},${q(u.token)},${q(u.id)},${now+3600000},${now},${now})`).join(',')}`);
@@ -64,7 +66,7 @@ try{
  cli(['deploy','--config','dist/server/wrangler.qa.json']);
  tailProcess=spawn(process.execPath,['node_modules/wrangler/bin/wrangler.js','tail','--format','json','--config','dist/server/wrangler.qa.json'],{env:process.env,stdio:['ignore','pipe','ignore']});
  let tailBuffer='',tailJson='';report.tailEvents=0;
- const captureTail=event=>{report.tailEvents++;for(const ex of event.exceptions||[]){if(report.cloudflareExceptions.length<30)report.cloudflareExceptions.push({name:ex.name,message:String(ex.message).slice(0,500)});}for(const log of event.logs||[]){const msg=(log.message||[]).join(' ');if(/D1(?:_| transient| queue| connection)|SQLITE|overload|queue|exceeded/i.test(msg)&&report.cloudflareExceptions.length<30)report.cloudflareExceptions.push({name:log.level,message:msg.slice(0,500)});}};
+ const captureTail=event=>{report.tailEvents++;report.tailOutcomes[event.outcome]=(report.tailOutcomes[event.outcome]||0)+1;for(const ex of event.exceptions||[]){if(report.cloudflareExceptions.length<30)report.cloudflareExceptions.push({name:ex.name,message:String(ex.message).slice(0,1000)});}for(const log of event.logs||[]){const msg=(log.message||[]).join(' ');if(/D1(?:_| transient| queue| connection)|SQLITE|overload|queue|exceeded|Error/i.test(msg)&&report.cloudflareWarnings.length<30)report.cloudflareWarnings.push({name:log.level,message:msg.slice(0,1000)});}};
  tailProcess.stdout.on('data',chunk=>{tailBuffer+=chunk.toString();let pos;while((pos=tailBuffer.indexOf('\n'))>=0){const line=tailBuffer.slice(0,pos);tailBuffer=tailBuffer.slice(pos+1);if(line==='{'||tailJson){tailJson+=line+'\n';if(line==='}'){try{captureTail(JSON.parse(tailJson));}catch{/* Ignore incomplete tail frames. */}tailJson='';}}else{try{captureTail(JSON.parse(line));}catch{/* Ignore incomplete tail frames. */}}}});
  // Allow the new worker to become available; bounded readiness, not counted as load.
  for(let i=0;i<12;i++){const r=await request(null,'/api/submissions');if(r.status===401)break;if(i===11)throw new Error('QA endpoint not ready');await new Promise(r=>setTimeout(r,2000));}
@@ -117,6 +119,7 @@ try{
   try{const r=await fetch(origin+`/api/questionnaire-sessions/${form.sessionId}/responses`,{method:'PUT',headers:{Origin:origin,Cookie:u.cookie,'Content-Type':'application/json'},body:JSON.stringify({questionId:question.id,value}),signal:ctrl.signal});await r.text();}catch(e){if(e.name!=='AbortError')throw e;interrupted=true;}finally{clearTimeout(timer);}
   check(interrupted,true,'transport interruption');await save(u,form,question,value);u.expected[key(form,question)]=value;verifyAnswers(u,await readDraft(u));
  });
+ if(refreshMode!=='off'){
  // Publish prompt-only updates on the isolated database, without editing production content.
  report.phase='isolated prompt publication';
  const instruments=await query("SELECT id,questionnaire_key FROM questionnaires WHERE published=1 AND questionnaire_key LIKE 'submission:%'");
@@ -127,11 +130,14 @@ try{
  UPDATE questionnaires SET published=0 WHERE id=${q(old.id)};
  UPDATE questionnaires SET published=1 WHERE id=${q(next)};
  INSERT INTO questionnaire_publication_history(questionnaire_id) VALUES (${q(next)});`);}
- await phase('300 concurrent live question refreshes preserve saved answers',users,async u=>{
+ if(refreshMode==='probe'){stopPolling=true;await polling;report.diagnosticChain=await query(`WITH RECURSIVE chain(id, depth) AS (SELECT id, 0 FROM questionnaire_sessions WHERE id=${q(users[0].draft.answerForm.sessionId)} AND user_id=${q(users[0].id)} UNION ALL SELECT u.current_session_id, chain.depth+1 FROM questionnaire_session_updates u JOIN chain ON u.previous_session_id=chain.id WHERE chain.depth<50) SELECT id FROM chain ORDER BY depth DESC LIMIT 1`);}
+ await phase('300 concurrent live question refreshes preserve saved answers',refreshMode==='probe'?users.slice(0,1):users,async u=>{
   const old=u.draft.answerForm.sessionId;
   const r=await request(u,`/api/questionnaire-sessions/${old}/refresh`,'POST');check(r.status,200,'refresh');check(r.body.updated,true,'updated instrument');
   u.draft=await readDraft(u);check(u.draft.answerForm.version,'qa-live-20261010','live version');check(u.draft.answerForm.questions.every(q=>q.promptTh.endsWith('[QA updated]')),true,'changed prompts');verifyAnswers(u,u.draft);
  });
+ if(refreshMode==='probe'){await new Promise(r=>setTimeout(r,3000));throw new Error('Live refresh diagnostic complete; see measured phase and Worker exceptions');}
+ }
  await phase('300 concurrent AI preparation and PDF acknowledgement writes',users,async u=>{
   u.aiLinks=[`https://chatgpt.com/share/qa-${u.id}`];
   const r=await request(u,`/api/submissions/${u.draft.submissionId}/preparation`,'PATCH',{aiCompanionUsed:true,additionalAiLinks:u.aiLinks});check(r.status,200,'AI preparation');
@@ -206,6 +212,7 @@ try{
 finally{
  stopPolling=true;if(polling)await polling;
  clearInterval(rssTimer);report.peakDriverRssBytes=peakDriverRss;
+ if(tailProcess)await new Promise(r=>setTimeout(r,2000));
  tailProcess?.kill();
  await persist();
  // Cleanup only resources created with this exact run name; no production identifiers.

@@ -17,7 +17,13 @@ jobs:
       fail-fast: false
       max-parallel: 1
       matrix:
-        scenario: [mixed, all-ka]
+        include:
+          - scenario: mixed
+            refresh: off
+          - scenario: all-ka
+            refresh: off
+          - scenario: refresh-probe
+            refresh: probe
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -49,6 +55,7 @@ jobs:
           NEXT_PUBLIC_TURNSTILE_SITE_KEY: 0x4AAAAAAFAv4gMFljB7eBAU
           PRODUCTION_SOURCE: 5c00936a649822e27447c155e25cbc5b5d618c4d
           QA_SCENARIO: ${{ matrix.scenario }}
+          QA_REFRESH_MODE: ${{ matrix.refresh }}
       - name: Save results, including failures and cleanup status
         if: always()
         uses: actions/upload-artifact@v7
