@@ -689,7 +689,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
         <span className="player-eyebrow">FINAL / ตรวจสอบและส่ง</span>
         <h2>พร้อมยืนยันสิ่งที่คุณคิดแล้วหรือยัง?</h2>
         <p>{finalRequiresAi
-          ? "ตรวจคำตอบและ post-test ให้ครบ พร้อมแนบไฟล์ PDF บทสนทนากับ AI"
+          ? submission.requirements.requiresPosttest ? "ตรวจคำตอบและ post-test ให้ครบ พร้อมแนบไฟล์ PDF บทสนทนากับ AI" : "ตรวจคำตอบทั้ง 5 ข้อ ระดับความมั่นใจ สไลด์ และ PDF บทสนทนากับ AI ให้ครบก่อนส่ง"
           : submission.requirements.requiresAnswerForm ? "ตรวจคำตอบทั้ง 5 ข้อ ระดับความมั่นใจ ไฟล์ PDF บทสนทนากับ AI และไฟล์สไลด์ให้ครบ แล้วกดส่งคำตอบ" : "กรอกคำตอบในระบบให้ครบ หรือแนบไฟล์คำตอบหนึ่งรายการ แล้วส่งคำตอบได้ทันที"}</p>
         {answerAttachmentAllowed ? <p className="player-upload-state" role="status">{submission.uploads.answerAttachment ? `ไฟล์คำตอบ: ${submission.uploads.answerAttachment.original_name}` : submission.requirements.requiresAnswerAttachment ? "ยังไม่ได้แนบสไลด์ (จำเป็นก่อนส่ง)" : "ยังไม่ได้แนบไฟล์คำตอบ (กรอกคำตอบในระบบแทนได้)"}</p> : null}
         {finalRequiresAi ? <p className="player-upload-state" role="status">{submission.uploads.aiChatPdf ? `ไฟล์ AI chat PDF: ${submission.uploads.aiChatPdf.original_name}` : "ยังไม่ได้แนบไฟล์ PDF"}</p> : null}
