@@ -25,10 +25,11 @@ export function useLiveQuestionnaire({forms,enabled,saver,onUpdate}:{forms:LiveF
         if(!changed.ok) continue;
         const result=await changed.json() as {updated:boolean;form:LiveForm};
         if(!result.updated) continue;
-        const pending=await saver.rebindSession(old.sessionId,result.form.sessionId,(id,value)=>{
+        const rebound=await saver.rebindSession(old.sessionId,result.form.sessionId,(id,value)=>{
           const source=old.questions.find(q=>q.id===id);const target=result.form.questions.find(q=>q.key===source?.key);
           return source && target && compatibleQuestion(source,target,value) ? target.id : undefined;
         });
+        const pending={...rebound,...saver.restore(result.form.sessionId,result.form.questions.map(q=>q.id))};
         await latest.current.onUpdate(old,result.form,pending);updated=true;
         setNotice('แอดมินแก้ไขคำถามแล้ว อัปเดตเป็นฉบับล่าสุดให้แล้ว กรุณาทบทวนคำตอบก่อนส่ง คำตอบเดิมยังเก็บไว้ในประวัติ');
       }
