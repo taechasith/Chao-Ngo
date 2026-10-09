@@ -74,7 +74,8 @@ const guideSteps: Record<string, GuideStep[]> = {
   "ka-submit": [
     { target: "submit-case", title: "ตรวจว่ากำลังส่งคดีไหน", body: "เลือก MAIMEE หรือ WA VE ที่คุณสำรวจมา แล้วระบบจะเปิดแบบฟอร์มและเกณฑ์ของคดีนั้น" },
     { target: "submit-answer", title: "เขียนคำอธิบายในระบบ", body: "ตอบบทสรุปของคดี เหตุผล ปัญหาด้าน Finance หรือ Bio นวัตกรรม และความมั่นใจระดับ 1–5" },
-    { target: "submit-answer-attachment", title: "แนบสไลด์และPDF บทสนทนา AI", body: "แนบสไลด์ PDF หรือ PPTX ไม่เกิน 20 MB และลิงก์แชร์บทสนทนากับ AI ข้อมูลจะไม่เผยแพร่สาธารณะ ใช้สำหรับงานวิจัย" },
+    { target: "submit-answer-attachment", title: "แนบสไลด์สรุปคดี", body: "แนบสไลด์ PDF หรือ PPTX ไม่เกิน 20 MB ไฟล์เก็บเป็นส่วนตัว" },
+    { target: "submit-ai-pdf", title: "แนบ PDF บทสนทนา AI", body: "ยืนยันรับทราบการใช้ไฟล์ แล้วแนบ PDF บทสนทนากับ AI ไม่เกิน 20 MB ไฟล์ไม่เผยแพร่สาธารณะ" },
     { target: "submit-final", title: "ตรวจแล้วจึงส่ง", body: "ตรวจคำตอบทั้ง 5 ข้อ PDF บทสนทนา AI และไฟล์สไลด์ให้ครบก่อนกดส่งคำตอบ" },
   ],
   "evidence-viewer": [
