@@ -1,3 +1,4 @@
+import { getPlayerAssistantUrl } from "../../lib/server/content/player-evidence";
 import { AppShell } from "../../components/player/app-shell";
 import { SubmitFlow } from "../../components/player/submit-flow";
 
@@ -12,9 +13,10 @@ export default async function SubmitPage({ searchParams }: SubmitPageProps) {
     : "";
   const guideKey = /^subgame-ka-(?:fintech|wa-ve)$/.test(validSubgameId) ? "ka-submit" : "submit";
 
+  const [nodeAssistantUrl, kaAssistantUrl] = await Promise.all([getPlayerAssistantUrl("node-zone"), getPlayerAssistantUrl("ka-casefiles")]);
   return (
     <AppShell guideKey={guideKey} pageTitle="ส่งคำตอบ">
-      <SubmitFlow initialSubgameId={validSubgameId} />
+      <SubmitFlow initialSubgameId={validSubgameId} assistantUrls={{ node: nodeAssistantUrl, ka: kaAssistantUrl }} />
     </AppShell>
   );
 }

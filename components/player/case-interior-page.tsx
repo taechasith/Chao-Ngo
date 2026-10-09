@@ -34,6 +34,7 @@ export async function CaseInteriorPage({ pageTitle, eyebrow, title, subtitle, de
       <GameSessionStarter subgameId={subgameId} />
       <div className="quantum-interior">
         <PageIntro description={description} eyebrow={eyebrow} meta={meta} title={title} />
+        <AiCompanionNotice href={assistantUrl} />
         <section className="quantum-opening-grid" data-player-reveal="primary">
           <DossierPanel alt={imageAlt} eyebrow={`CASE SCENE / ${subtitle}`} image={image} subtitle="อ่านหลักฐาน ตั้งสมมติฐาน และตัดสินใจด้วยคำอธิบายของคุณเอง" title="เริ่มจากสิ่งที่ข้อมูลบอกคุณ">
             <UtilityStrip><Link href="#timeline">เปิด Timeline</Link><Link href="#evidence">ดูหลักฐาน</Link><Link data-guide="case-submit" href={`/submit?subgameId=${subgameId}`}>ส่งเมื่อพร้อม</Link></UtilityStrip>
@@ -56,7 +57,6 @@ export async function CaseInteriorPage({ pageTitle, eyebrow, title, subtitle, de
           </aside>
         </section>
         <div className="quantum-evidence-anchor"><EvidenceDesk initialSlug={timelineSlug} nodes={nodes} /></div>
-        <AiCompanionNotice href={assistantUrl} />
       </div>
     </PlayerShell>
   );

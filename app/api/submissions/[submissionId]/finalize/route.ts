@@ -83,6 +83,7 @@ function finalizationUpdate(
       `UPDATE submissions SET status = 'submitted', submitted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
         WHERE id = ? AND user_id = ? AND status = 'draft'
           AND questionnaire_session_id IS ? AND posttest_session_id IS ?
+          AND ai_companion_confirmed_at IS NOT NULL
           AND (questionnaire_session_id IS NULL OR EXISTS (SELECT 1 FROM questionnaire_sessions qs JOIN questionnaires q ON q.id=qs.questionnaire_id WHERE qs.id=submissions.questionnaire_session_id AND q.published=1))
           AND (posttest_session_id IS NULL OR EXISTS (SELECT 1 FROM questionnaire_sessions qs JOIN questionnaires q ON q.id=qs.questionnaire_id WHERE qs.id=submissions.posttest_session_id AND q.published=1))
           AND EXISTS (SELECT 1 FROM submission_consent_acknowledgements
@@ -98,6 +99,7 @@ function finalizationUpdate(
     `UPDATE submissions SET status = 'submitted', submitted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND user_id = ? AND status = 'draft'
           AND questionnaire_session_id IS ? AND posttest_session_id IS ?
+          AND ai_companion_confirmed_at IS NOT NULL
           AND (questionnaire_session_id IS NULL OR EXISTS (SELECT 1 FROM questionnaire_sessions qs JOIN questionnaires q ON q.id=qs.questionnaire_id WHERE qs.id=submissions.questionnaire_session_id AND q.published=1))
           AND (posttest_session_id IS NULL OR EXISTS (SELECT 1 FROM questionnaire_sessions qs JOIN questionnaires q ON q.id=qs.questionnaire_id WHERE qs.id=submissions.posttest_session_id AND q.published=1))
         AND EXISTS (SELECT 1 FROM consent_records WHERE user_id = submissions.user_id
@@ -115,10 +117,11 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
 
   const { submissionId } = await context.params;
   const submission = await env.DB.prepare(
-    `SELECT id, subgame_id, questionnaire_session_id, posttest_session_id, status
+    `SELECT id, subgame_id, questionnaire_session_id, posttest_session_id, status, ai_companion_confirmed_at
        FROM submissions WHERE id = ? AND user_id = ?`,
   ).bind(submissionId, participant.userId).first<{
     id: string;
+    ai_companion_confirmed_at: string | null;
     posttest_session_id: string | null;
     questionnaire_session_id: string | null;
     status: string;
@@ -185,6 +188,8 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
   if (requirements.requiresAiChatPdf && !aiChatPdf) return response({ code: "AI_CHAT_PDF_REQUIRED" }, 400);
   if (requirements.requiresAiChatPdf && !acknowledgement) return response({ code: "ACKNOWLEDGEMENT_REQUIRED" }, 400);
 
+  if (!submission.ai_companion_confirmed_at) return response({ code: "AI_COMPANION_REQUIRED" }, 400);
+
   const retentionYears = await getResearchRetentionYears();
   const results = await env.DB.batch([
     finalizationUpdate(
@@ -219,8 +224,8 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
   ]);
 
   if ((results[0]?.meta.changes ?? 0) === 0) {
-    const current = await env.DB.prepare("SELECT status FROM submissions WHERE id=? AND user_id=?").bind(submissionId,participant.userId).first<{status:string}>();
-    return response({code:current?.status === "draft" ? "QUESTIONNAIRE_UPDATED" : "SUBMISSION_ALREADY_FINALIZED"},409);
+    const current = await env.DB.prepare("SELECT status, ai_companion_confirmed_at FROM submissions WHERE id=? AND user_id=?").bind(submissionId,participant.userId).first<{status:string; ai_companion_confirmed_at:string|null}>();
+    return response({code:current?.status === "draft" ? !current.ai_companion_confirmed_at ? "AI_COMPANION_REQUIRED" : "QUESTIONNAIRE_UPDATED" : "SUBMISSION_ALREADY_FINALIZED"},409);
   }
   return response({ completion: await recalculateCompletionForUser(participant.userId), retentionYears, status: "submitted" }, 201);
 }

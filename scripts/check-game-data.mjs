@@ -50,6 +50,10 @@ if (!rows[5].some(row => row.name === "0020_live_question_updates.sql")) {
   console.error("Apply reviewed migration 0020_live_question_updates.sql before deploying live question updates.");
   process.exit(1);
 }
+if (!rows[5].some(row => row.name === "0021_submission_ai_preparation.sql") ||
+    !["additional_ai_links_json", "ai_companion_confirmed_at"].every(name => rows[2].some(column => column.name === name))) {
+  console.error("Apply reviewed migration 0021_submission_ai_preparation.sql before deploying AI preparation."); process.exit(1);
+}
 if (!rows[0].some(column => column.name === "personal_skills_json")) {
   console.error("Missing profile migration 0014_research_profile_skills.sql. Apply reviewed D1 migrations before deploying.");
   process.exit(1);

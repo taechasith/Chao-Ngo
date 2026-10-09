@@ -2784,3 +2784,12 @@ html[data-motion="reduce"] .player-questionnaire-progress span, html[data-motion
 @media (max-width: 35rem) {
   .player-submission-case-content { max-width: calc(100% - 3.8rem); }
 }
+
+.player-research-partners{margin:48px auto 0;width:100%;max-width:1360px;border-top:1px solid rgba(157,191,180,.22);padding:28px 0 12px}
+.player-research-partners h2{margin:10px 0 20px;font-size:clamp(1.25rem,2.4vw,1.75rem);line-height:1.4}
+.player-research-partners-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.player-research-partners-grid>div{height:150px;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(255,255,255,.035);border:1px solid rgba(157,191,180,.16)}
+.player-research-partners-grid img{width:100%;height:100%;max-width:290px;object-fit:contain}
+@media(max-width:640px){.player-research-partners-grid{grid-template-columns:1fr}.player-research-partners-grid>div{height:128px}.player-research-partners{margin-top:32px;padding-inline:16px}}
+
+.player-research-partners-grid .player-partner-coeus img{object-fit:cover}

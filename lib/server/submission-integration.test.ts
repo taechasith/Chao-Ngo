@@ -13,6 +13,7 @@ import { POST as consent } from "../../app/api/research-consent/route";
 import { POST as acknowledge, DELETE as revokeAcknowledgement } from "../../app/api/submissions/[submissionId]/acknowledgement/route";
 import { POST as upload } from "../../app/api/submissions/[submissionId]/uploads/route";
 import { POST as revise } from "../../app/api/submissions/[submissionId]/revise/route";
+import { PATCH as preparation } from "../../app/api/submissions/[submissionId]/preparation/route";
 import { POST as finalize } from "../../app/api/submissions/[submissionId]/finalize/route";
 import { PUT as answer } from "../../app/api/questionnaire-sessions/[sessionId]/responses/route";
 import { POST as complete } from "../../app/api/questionnaire-sessions/[sessionId]/complete/route";
@@ -105,6 +106,21 @@ describe("B6 real D1/private R2 contracts", () => {
     expect((await answer(request("PUT", { questionId: draft.answerForm.questions[0].id, value: "stolen" }, stranger), sessionContext(draft.answerForm.sessionId))).status).toBe(404);
   });
 
+  it("keeps additional AI links private, validates URLs and restores the saved draft", async () => {
+    const value = { aiCompanionUsed: true, additionalAiLinks: ["https://chatgpt.com/share/qa-private"] };
+    expect((await preparation(request("PATCH", value, null), context(id))).status).toBe(401);
+    expect((await preparation(request("PATCH", value, owner, "https://evil.test"), context(id))).status).toBe(403);
+    expect((await preparation(request("PATCH", value, stranger), context(id))).status).toBe(404);
+    for (const link of ["javascript:alert(1)", "http://example.test/chat", "https://user:pass@example.test/chat", "https://127.0.0.1/chat"]) {
+      expect((await preparation(request("PATCH", { ...value, additionalAiLinks: [link] }), context(id))).status).toBe(400);
+    }
+    expect((await preparation(request("PATCH", { ...value, additionalAiLinks: Array(6).fill("https://example.test/chat") }), context(id))).status).toBe(400);
+    expect((await preparation(request("PATCH", value), context(id))).status).toBe(200);
+    expect(await (await getSubmission(request("GET"))).json()).toMatchObject({ submission: { preparation: value } });
+    expect((await getSubmission(request("GET", undefined, null))).status).toBe(401);
+    expect((await preparation(request("PATCH", { aiCompanionUsed: false, additionalAiLinks: [] }), context(id))).status).toBe(200);
+  });
+
   it("validates current PDF acknowledgement, MIME, signature, and limits", async () => {
     expect((await upload(fileRequest(), context(id))).status).toBe(403);
     expect((await acknowledge(request("POST", { acknowledged: true, consentVersion: "old" }), context(id))).status).toBe(400);
@@ -157,6 +173,8 @@ describe("B6 real D1/private R2 contracts", () => {
     expect((await finalize(request("POST", undefined, stranger), context(ka.submissionId))).status).toBe(400);
     expect((await acknowledge(request("POST", { acknowledged:true,consentVersion:aiChatUploadConsentVersion }, stranger), context(ka.submissionId))).status).toBe(201);
     expect((await upload(fileRequest(pdf,"application/pdf","QA-ai.pdf",stranger), context(ka.submissionId))).status).toBe(201);
+    expect(await (await finalize(request("POST", undefined, stranger), context(ka.submissionId))).json()).toMatchObject({ code: "AI_COMPANION_REQUIRED" });
+    expect((await preparation(request("PATCH", { aiCompanionUsed: true, additionalAiLinks: [] }, stranger), context(ka.submissionId))).status).toBe(200);
     expect((await finalize(request("POST", undefined, stranger), context(ka.submissionId))).status).toBe(201);
     const restored = await (await getSubmission(new Request(`https://example.test/api/submissions?subgameId=${kaSubgameId}`, { headers: { "x-test-user": stranger } }))).json() as { submission: { status: string; answerForm: { responses: Record<string, unknown> } } };
     expect(restored.submission.status).toBe("submitted");
@@ -187,6 +205,8 @@ describe("B6 real D1/private R2 contracts", () => {
     expect((await finalize(request("POST", undefined, stranger), context(ka.submissionId))).status).toBe(400);
     expect((await acknowledge(request("POST", { acknowledged:true,consentVersion:aiChatUploadConsentVersion }, stranger), context(ka.submissionId))).status).toBe(201);
     expect((await upload(fileRequest(pdf,"application/pdf","QA-ai.pdf",stranger), context(ka.submissionId))).status).toBe(201);
+    expect(await (await finalize(request("POST", undefined, stranger), context(ka.submissionId))).json()).toMatchObject({ code: "AI_COMPANION_REQUIRED" });
+    expect((await preparation(request("PATCH", { aiCompanionUsed: true, additionalAiLinks: [] }, stranger), context(ka.submissionId))).status).toBe(200);
     expect((await finalize(request("POST", undefined, stranger), context(ka.submissionId))).status).toBe(201);
   });
 
@@ -226,9 +246,12 @@ describe("B6 real D1/private R2 contracts", () => {
   });
 
   it("finalizes once, restores the receipt and anchors retention to submission", async () => {
+    expect(await (await finalize(request("POST", undefined, owner), context(id))).json()).toMatchObject({ code: "AI_COMPANION_REQUIRED" });
+    expect((await preparation(request("PATCH", { aiCompanionUsed: true, additionalAiLinks: [] }, owner), context(id))).status).toBe(200);
     expect((await finalize(request(), context(id))).status).toBe(201);
     const first = await env.DB.prepare('SELECT research_retention_expires_at FROM "user" WHERE id = ?').bind(owner).first();
     expect(first?.research_retention_expires_at).toMatch(/^2029-/);
+    expect((await preparation(request("PATCH", { aiCompanionUsed: false, additionalAiLinks: [] }), context(id))).status).toBe(409);
     expect((await finalize(request(), context(id))).status).toBe(200);
     expect(await env.DB.prepare('SELECT research_retention_expires_at FROM "user" WHERE id = ?').bind(owner).first()).toEqual(first);
     const restored = await (await getSubmission(request("GET"))).json() as { submission: { status: string } };
@@ -278,6 +301,8 @@ describe("B6 real D1/private R2 contracts", () => {
     expect((await finalize(request(), context(next.submissionId))).status).toBe(400);
     await acknowledge(request("POST", { acknowledged: true, consentVersion: aiChatUploadConsentVersion }), context(next.submissionId));
     expect((await upload(fileRequest(), context(next.submissionId))).status).toBe(201);
+    expect(await (await finalize(request("POST", undefined, owner), context(next.submissionId))).json()).toMatchObject({ code: "AI_COMPANION_REQUIRED" });
+    expect((await preparation(request("PATCH", { aiCompanionUsed: true, additionalAiLinks: [] }, owner), context(next.submissionId))).status).toBe(200);
     expect((await finalize(request(), context(next.submissionId))).status).toBe(201);
     expect((await recalculateCompletionForUser(owner)).letterEligible).toBe(true);
     expect(await env.PRIVATE_UPLOADS.head(key)).not.toBeNull();
@@ -384,6 +409,7 @@ describe("onboarding saves personal data and resumes without writing consent aga
     expect((await complete(request("POST", undefined, user), sessionContext(draft.submission.answerForm.sessionId))).status).toBe(200);
     expect((await acknowledge(request("POST", { acknowledged:true,consentVersion:aiChatUploadConsentVersion }, user), context(id))).status).toBe(201);
     expect((await upload(fileRequest(pdf,"application/pdf","QA-ai.pdf",user), context(id))).status).toBe(201);
+    expect((await preparation(request("PATCH", { aiCompanionUsed: true, additionalAiLinks: [] }, user), context(id))).status).toBe(200);
     const database = env.DB;
     env.DB = {
       prepare(sql: string) {
@@ -423,6 +449,7 @@ describe("admin publication racing a player submit",()=>{
     const slides=new FormData();slides.set("kind","answer_attachment");slides.set("file",new File([pdf as BlobPart],"QA-slides.pdf",{type:"application/pdf"}));
     await upload(new Request("https://example.test/api/upload",{method:"POST",headers:{"x-test-user":user},body:slides}),context(id));
     await upload(fileRequest(pdf,"application/pdf","QA-ai.pdf",user),context(id));
+    expect((await preparation(request("PATCH", { aiCompanionUsed: true, additionalAiLinks: [] }, user), context(id))).status).toBe(200);
     const db=env.DB;let published=false;
     env.DB={prepare:db.prepare.bind(db),batch:async(statements:D1PreparedStatement[])=>{
       if(statements.length===4&&!published) {

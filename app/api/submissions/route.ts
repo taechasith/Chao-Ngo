@@ -1,5 +1,6 @@
 import { withD1RetryableErrorHandling } from "../../../lib/server/d1-overload";
 import { env } from "cloudflare:workers";
+import { storedAdditionalAiLinks } from "../../../lib/ai-preparation";
 
 import { requireResearchParticipant } from "../../../lib/server/research-access";
 import { readBoundedJson } from "../../../lib/server/questionnaires/request";
@@ -35,6 +36,8 @@ type RouteQuestionnaire = {
 };
 
 type SubmissionRow = {
+  additional_ai_links_json: string;
+  ai_companion_confirmed_at: string | null;
   id: string;
   posttest_session_id: string | null;
   questionnaire_session_id: string | null;
@@ -153,6 +156,7 @@ async function loadSubmission(row: SubmissionRow) {
   }
   const previousForms = await Promise.all(history.map(item => loadQuestionnaire(item.previous_session_id)));
   return {
+    preparation: { aiCompanionUsed: Boolean(row.ai_companion_confirmed_at), additionalAiLinks: storedAdditionalAiLinks(row.additional_ai_links_json) },
     previousAnswerForm: previousForms[0] ?? null,
     previousAnswerForms: previousForms.filter(Boolean),
     acknowledgement: acknowledgement ?? null,
@@ -173,7 +177,7 @@ async function loadSubmission(row: SubmissionRow) {
 
 async function getDraft(userId: string, subgameId: string) {
   const row = await env.DB.prepare(
-    `SELECT id, posttest_session_id, questionnaire_session_id, status, reviewer_note, subgame_id, user_id
+    `SELECT id, posttest_session_id, questionnaire_session_id, status, reviewer_note, subgame_id, user_id, additional_ai_links_json, ai_companion_confirmed_at
        FROM submissions
       WHERE user_id = ? AND subgame_id = ?
       ORDER BY created_at DESC, rowid DESC

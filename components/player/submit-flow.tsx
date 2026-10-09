@@ -1,5 +1,7 @@
 "use client";
 
+import { useAiPreparation } from "../../lib/client/use-ai-preparation";
+import { type AiPreparation } from "../../lib/ai-preparation";
 import { AiCompanionNotice } from "./ai-companion-notice";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -48,6 +50,7 @@ type SubmissionRequirements = {
 };
 
 type SubmissionPayload = {
+  preparation: AiPreparation;
   acknowledgement: { acknowledged_at: string } | null;
   answerForm: QuestionForm | null;
   posttestForm: QuestionForm | null;
@@ -141,6 +144,7 @@ function thaiError(code: string): string {
   const messages: Record<string, string> = {
     QUESTIONNAIRE_UPDATED: "แอดมินแก้ไขคำถามแล้ว กรุณารออัปเดตและทบทวนคำตอบก่อนส่งอีกครั้ง",
     SLIDES_REQUIRED: "กรุณาแนบสไลด์เป็นไฟล์ PDF หรือ PPTX ก่อนส่ง",
+    AI_COMPANION_REQUIRED: "ต้องใช้ AI คู่คิดที่กำหนด และยืนยันการใช้งานด้านบนก่อนส่งคำตอบ",
     AI_CHAT_LINK_REQUIRED: "กรุณาใส่ลิงก์แชร์บทสนทนากับ AI ที่ขึ้นต้นด้วย https://",
     SUBMISSION_ANSWERS_INCOMPLETE: "กรุณาตอบคำถามที่จำเป็นให้ครบก่อนส่ง",
     DATABASE_BUSY: "ระบบบันทึกไม่พร้อมชั่วคราว กรุณารอสักครู่แล้วลองอีกครั้ง",
@@ -200,7 +204,7 @@ function SubmissionStageRail({ stages }: { stages: { href: string; label: string
   </nav>;
 }
 
-export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: string }) {
+export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSubgameId?: string; assistantUrls?: { node: string; ka: string } }) {
   const [subgameId, setSubgameId] = useState(initialSubgameId);
   const [submission, setSubmission] = useState<SubmissionPayload | null>(null);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
@@ -215,6 +219,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
   const [aiPdfNotice, setAiPdfNotice] = useState("");
   const [researchReady, setResearchReady] = useState<boolean | null>(null);
   const { saver, status: answerSaveState, pendingCount } = useAnswerAutosave(setMessage);
+  const ai = useAiPreparation(submission?.submissionId, submission?.preparation, submission?.status === "draft");
   const completedSessions = useRef(new Set<string>());
   const answersRef = useRef<Record<string, unknown>>({});
   const submissionRef = useRef<SubmissionPayload | null>(null);
@@ -475,6 +480,8 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
     setSaving(true);
     setMessage("");
     try {
+      if (!ai.aiCompanionUsed) { setMessage("ต้องใช้ AI คู่คิดที่กำหนด และยืนยันการใช้งานด้านบนก่อนส่งคำตอบ"); return; }
+      if (!(await ai.flush())) { setMessage("ยังบันทึกข้อมูล AI ไม่ครบ กรุณาตรวจลิงก์หรือลองบันทึกใหม่ก่อนส่ง"); return; }
       for (const form of [current.answerForm, current.posttestForm]) {
         if (form && !(await saver.flush(form.sessionId))) {
           setMessage("ยังมีคำตอบค้างบันทึก กรุณาลองอีกครั้งก่อนส่ง");
@@ -502,7 +509,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
         return;
       }
       setSubmission((value) => value ? {
-        ...value, status: "submitted",
+        ...value, status: "submitted", preparation: { aiCompanionUsed: ai.aiCompanionUsed, additionalAiLinks: ai.linksText.split(/\r?\n/).map(link => link.trim()).filter(Boolean) },
         answerForm: value.answerForm ? { ...value.answerForm, responses: { ...answersRef.current } } : null,
         posttestForm: value.posttestForm ? { ...value.posttestForm, responses: { ...answersRef.current } } : null,
       } : value);
@@ -574,6 +581,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
       <StatusBadge>{needsRevision ? "รอแก้ไข" : submission.status === "accepted" ? "ผ่านการตรวจแล้ว" : "ส่งแล้ว"}</StatusBadge>
       <h1 className="mt-4 font-display text-3xl text-white">{needsRevision ? "มีคำตอบที่ต้องแก้ไข" : "คำตอบของคุณถูกบันทึกแล้ว"}</h1>
       <p className="mt-3 text-sm leading-6 text-white/70">{caseForSubgameId(subgameId).title} · เลขที่งานส่ง {submission.submissionId}</p>
+      {submission.preparation.additionalAiLinks.length ? <section className="mt-5"><h2 className="text-lg">ลิงก์ AI อื่นที่ส่งไว้</h2><ul className="mt-3 grid gap-2">{submission.preparation.additionalAiLinks.map(link => <li className="break-all" key={link}><a className="underline" href={link} target="_blank" rel="noopener noreferrer">{link}</a></li>)}</ul></section> : null}
       {submission.reviewerNote ? <p className="mt-4 whitespace-pre-wrap border border-white/20 p-4 text-sm leading-6 text-white/85">หมายเหตุจากผู้ดูแล: {submission.reviewerNote}</p> : null}
       {needsRevision ? <><p className="mt-4 text-sm leading-6 text-white/70">สร้างแบบร่างใหม่จากคำตอบเดิมเพื่อแก้ไข งานที่ส่งครั้งก่อนจะยังเก็บไว้ หากส่งเป็นไฟล์ให้แนบไฟล์ฉบับแก้ไขอีกครั้ง</p><InvestigativeAction className="mt-5" disabled={saving} onClick={() => void (async () => {
         setSaving(true); setMessage("");
@@ -620,6 +628,15 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
         <h1>เมื่อคุณคิดว่ารู้คำตอบแล้ว</h1>
         <p className="text-sm text-white/65">แบบร่างบันทึกอัตโนมัติเมื่อคุณเปลี่ยนคำตอบ</p>
       </header>
+      <section aria-label="ขั้นตอนบังคับก่อนส่งคำตอบ" id="submission-stage-ai-required">
+        <AiCompanionNotice href={subgameId.startsWith("subgame-ka-") ? assistantUrls?.ka : assistantUrls?.node} />
+        <label className="mt-4 flex items-start gap-3 border border-white/20 bg-white/5 p-4 text-sm leading-6">
+          <input className="mt-1 size-4 accent-orange-300" type="checkbox" checked={ai.aiCompanionUsed} disabled={saving}
+            onChange={event => ai.change({ aiCompanionUsed: event.currentTarget.checked })} />
+          <span>ฉันได้คุยกับ AI คู่คิดที่กำหนดเพื่อทดสอบคำอธิบายของคดีนี้แล้ว <span className="text-orange-200">(จำเป็นก่อนส่ง)</span></span>
+        </label>
+        <p className="mt-3 text-sm text-white/65" role="status">{ai.status || "ยืนยันการใช้งานหลังคุยกับ AI แล้ว ระบบจะตรวจการยืนยันและไฟล์ที่จำเป็นก่อนรับคำตอบ"}</p>
+      </section>
       <SubmissionStageRail stages={stages} />
         <div aria-live="polite" className="player-system-note">
           <p>{answerSaveState === "error" ? `มีคำตอบค้างบันทึก ${pendingCount} รายการ` : pendingCount ? "กำลังบันทึกคำตอบ…" : answerSaveState === "saved" ? "บันทึกคำตอบล่าสุดแล้ว" : "คำตอบจะบันทึกอัตโนมัติ"}</p>
@@ -635,7 +652,6 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
         </div>
         <span aria-hidden="true" className="player-submission-case-mark">CASE<br />FILE</span>
       </section>
-      <AiCompanionNotice />
       {(submission.previousAnswerForms ?? (submission.previousAnswerForm ? [submission.previousAnswerForm] : [])).map(form => <details className="player-system-note" key={form.sessionId}>
         <summary className="cursor-pointer">ดูคำตอบฉบับก่อนหน้า · {form.version}</summary>
         <p className="mt-3 text-sm text-white/65">คำตอบที่ตรงกับแบบใหม่ถูกคัดลอกมาให้แล้ว กรุณาตรวจทาน คำตอบเดิมยังเก็บไว้ด้านล่าง</p>
@@ -701,7 +717,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
       ) : null}
       {submission.requirements.requiresAiChatPdf ? (
         <Panel className="player-submission-panel" data-guide="submit-ai-pdf" id="submission-stage-ai-pdf">
-          <span className="player-eyebrow">AI CHAT PDF</span>
+          <span className="player-eyebrow">REQUIRED / AI CHAT PDF</span>
           <h2 className="mt-2 font-display text-2xl text-white">ไฟล์ PDF บทสนทนากับ AI</h2>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-white/70">ไฟล์จะถูกเก็บในพื้นที่ส่วนตัวเพื่อวิเคราะห์งานวิจัยเท่านั้น จำกัดขนาดไม่เกิน 20 MB และไม่แสดงผ่านคลังไฟล์สาธารณะ</p>
           <figure className="mt-5 max-w-sm border border-white/15 bg-black/25 p-2">
@@ -724,6 +740,19 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
                 ? `แนบแล้ว: ${uploadName(aiChatPdf)} (${formatFileSize(aiChatPdf.bytes)})`
                 : "ยังไม่ได้เลือกไฟล์ PDF"}
           </p>
+          <div className="mt-6 border-t border-white/15 pt-5">
+            <label className="grid gap-3 text-sm text-white/85" htmlFor="additional-ai-links">
+              <span className="font-semibold">ลิงก์บทสนทนาจาก AI อื่นที่ใช้เพิ่มเติม</span>
+              <span className="leading-6 text-white/65">ถ้าใช้ AI อื่นนอกจากคู่คิดที่กำหนด ให้ส่งลิงก์แชร์บทสนทนาด้วย (ไม่เกิน 5 ลิงก์ แยกบรรทัดละลิงก์) หากไม่ได้ใช้เพิ่มเติม เว้นว่างได้ ลิงก์นี้ไม่ใช้แทน PDF ของ AI คู่คิด</span>
+              <textarea className="player-input min-h-32 resize-y" id="additional-ai-links" value={ai.linksText} maxLength={10_100}
+                disabled={saving} placeholder="https://…" onChange={event => ai.change({ linksText: event.currentTarget.value })} />
+            </label>
+            <p className="mt-3 text-sm leading-6 text-white/65">ลิงก์ที่ส่งจะเก็บในพื้นที่ส่วนตัวของระบบและใช้สำหรับงานวิจัยโดยทีมที่ได้รับสิทธิ์ ตามระยะเวลาเก็บรักษาเดียวกับงานส่ง การตั้งค่าการแชร์บนบริการ AI ต้นทางยังเป็นไปตามที่คุณเลือก</p>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button className="player-button" disabled={ai.pending || saving} type="button" onClick={() => void ai.flush()}>{ai.pending ? "กำลังบันทึก…" : "บันทึกข้อมูล AI / ลองอีกครั้ง"}</button>
+              <p className="text-sm text-white/65" role="status">{ai.status || "ยังไม่มีลิงก์ AI อื่น"}</p>
+            </div>
+          </div>
         </Panel>
       ) : null}
       <section className="player-submission-review" data-guide="submit-final" id="submission-stage-final">
@@ -734,8 +763,9 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
           : submission.requirements.requiresAnswerForm ? "ตรวจคำตอบทั้ง 5 ข้อ ระดับความมั่นใจ ไฟล์ PDF บทสนทนากับ AI และไฟล์สไลด์ให้ครบ แล้วกดส่งคำตอบ" : "กรอกคำตอบในระบบให้ครบ หรือแนบไฟล์คำตอบหนึ่งรายการ แล้วส่งคำตอบได้ทันที"}</p>
         {answerAttachmentAllowed ? <p className="player-upload-state" role="status">{submission.uploads.answerAttachment ? `ไฟล์คำตอบ: ${submission.uploads.answerAttachment.original_name}` : submission.requirements.requiresAnswerAttachment ? "ยังไม่ได้แนบสไลด์ (จำเป็นก่อนส่ง)" : "ยังไม่ได้แนบไฟล์คำตอบ (กรอกคำตอบในระบบแทนได้)"}</p> : null}
         {finalRequiresAi ? <p className="player-upload-state" role="status">{submission.uploads.aiChatPdf ? `ไฟล์ AI chat PDF: ${submission.uploads.aiChatPdf.original_name}` : "ยังไม่ได้แนบไฟล์ PDF"}</p> : null}
+        {!ai.aiCompanionUsed ? <p className="player-upload-state">ยังไม่ได้ยืนยันการใช้ AI คู่คิดที่กำหนด <a className="underline" href="#submission-stage-ai-required">กลับไปยืนยันด้านบน</a></p> : null}
         {message ? <p aria-live="polite" className="mt-4 text-sm text-red-200">{message}</p> : null}
-        <InvestigativeAction className="mt-6 w-full sm:w-auto" disabled={live.updating || saving || uploading || acknowledgementPending || (finalRequiresAi && (!acknowledged || !submission.uploads.aiChatPdf))} onClick={() => void finalize()}>
+        <InvestigativeAction className="mt-6 w-full sm:w-auto" disabled={!ai.aiCompanionUsed || ai.pending || live.updating || saving || uploading || acknowledgementPending || (finalRequiresAi && (!acknowledged || !submission.uploads.aiChatPdf))} onClick={() => void finalize()}>
           {saving ? "กำลังส่งคำตอบ…" : "ส่งคำตอบ"}
         </InvestigativeAction>
         <p className="mt-3 text-xs leading-5 text-white/50">ยังไม่มั่นใจ? กลับไปเปิดหลักฐานได้ทุกเมื่อ</p>
