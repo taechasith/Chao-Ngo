@@ -1,3 +1,4 @@
+import { AiCompanionNotice } from "../../../components/player/ai-companion-notice";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -42,6 +43,8 @@ export default async function NodeZonePage() {
           <p>สองคดีอยู่ในแฟ้มเดียวกัน เริ่มจากเรื่องที่คุณอยากรู้ได้เลย</p>
         </header>
 
+        <AiCompanionNotice href={assistantUrl} guideTarget="node-zone-ai" />
+
         <section aria-label="เลือกคดีย่อย" className="player-route-index" data-player-reveal="primary">
           {published.map((item) => (
             <Link className="player-route-card" href={item.href} key={item.href}>
@@ -60,14 +63,7 @@ export default async function NodeZonePage() {
 
         {published.length ? <EvidenceDesk guideScope="node-zone" nodes={nodes} /> : null}
 
-        <section className="player-ai-strip" data-guide="node-zone-ai" data-player-reveal="primary">
-          <div>
-            <span className="player-eyebrow">REQUIRED / GEMINI / AI คู่คิด</span>
-            <h2 className="mt-2">ใช้ AI คู่คิดก่อนส่งคำตอบ</h2>
-            <p>เปิด Gemini เพื่อทดสอบคำอธิบายของคุณ แล้วบันทึกบทสนทนาเป็น PDF สำหรับขั้นตอนส่งคำตอบ</p>
-          </div>
-          <InvestigativeAction href={assistantUrl} rel="noopener noreferrer" target="_blank">เปิด Gemini ↗</InvestigativeAction>
-        </section>
+
         <div data-guide="node-zone-submit"><InvestigativeAction href="/submit">ส่งคำตอบเมื่อพร้อม</InvestigativeAction></div>
       </div>
     </AppShell>

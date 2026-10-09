@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import process from "node:process";
 import console from "node:console";
 
-const reviewed = ["0014_research_profile_skills.sql", "0015_submission_reviews.sql", "0016_submission_lookup_index.sql", "0017_ka_casefiles_v2.sql", "0018_ka_submission_v2.sql", "0019_ka_ai_pdf.sql", "0020_live_question_updates.sql"];
+const reviewed = ["0014_research_profile_skills.sql", "0015_submission_reviews.sql", "0016_submission_lookup_index.sql", "0017_ka_casefiles_v2.sql", "0018_ka_submission_v2.sql", "0019_ka_ai_pdf.sql", "0020_live_question_updates.sql", "0021_submission_ai_preparation.sql"];
 function query(sql) {
   const result = spawnSync(process.execPath, ["node_modules/wrangler/bin/wrangler.js", "d1", "execute", "DB", "--remote", "--command", sql, "--json"], { encoding: "utf8" });
   if (result.status !== 0) throw new Error("Production D1 preflight query failed; stop without applying migrations.");
@@ -13,6 +13,8 @@ const applied = new Set(query("SELECT name FROM d1_migrations").map(row => row.n
 const pending = readdirSync("migrations").filter(name => name.endsWith(".sql") && !applied.has(name));
 if (pending.some(name => !reviewed.includes(name))) throw new Error("Unexpected pending migration; review the ledger before changing production.");
 for (const [table, column, migration] of [
+  ["submissions", "additional_ai_links_json", "0021_submission_ai_preparation.sql"],
+  ["submissions", "ai_companion_confirmed_at", "0021_submission_ai_preparation.sql"],
   ["user_profiles", "personal_skills_json", reviewed[0]],
   ["submissions", "reviewer_note", reviewed[1]],
   ["submissions", "revision_of_submission_id", reviewed[1]],

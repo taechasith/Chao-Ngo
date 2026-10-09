@@ -62,6 +62,9 @@ async function handlePOST(request: Request, context: { params: Promise<{ submiss
   statements.push(env.DB.prepare(
     "INSERT INTO submissions (id, user_id, subgame_id, questionnaire_session_id, posttest_session_id, status, revision_of_submission_id) VALUES (?, ?, ?, ?, ?, 'draft', ?)",
   ).bind(id, userId, original.subgame_id, answer, posttest, submissionId));
+  statements.push(env.DB.prepare(`UPDATE submissions SET additional_ai_links_json =
+    (SELECT additional_ai_links_json FROM submissions WHERE id = ? AND user_id = ?) WHERE id = ? AND user_id = ?`)
+    .bind(submissionId, userId, id, userId));
   for (const migratedForm of migratedForms) statements.push(env.DB.prepare("INSERT INTO submission_form_migrations (submission_id, previous_session_id, current_session_id) VALUES (?, ?, ?)")
     .bind(id, migratedForm.previous, migratedForm.current));
   const historyTable = migratedForms.length ? await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='submission_form_history'").first() : null;

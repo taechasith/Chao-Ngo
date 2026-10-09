@@ -3,7 +3,7 @@ import Link from "next/link";
 import { AiCompanionNotice } from "./ai-companion-notice";
 
 import { kaGame, kaNodeLabels, kaSubmissionGuide, kaSubgames, kaTimelineNodes, type KaSubgameSlug } from "../../lib/ka-casefiles";
-import { getPlayerTimeline, type PlayerTimelineNode } from "../../lib/server/content/player-evidence";
+import { getPlayerTimeline, getPlayerAssistantUrl, type PlayerTimelineNode } from "../../lib/server/content/player-evidence";
 import { CaseProgress } from "./case-progress";
 import { EvidenceDesk } from "./evidence-desk";
 import { GameSessionStarter } from "./game-session-starter";
@@ -32,6 +32,7 @@ export async function KaCaseInteriorPage({
   const subgame = kaSubgames[caseSlug];
   const publication = await getCasePublication(subgame.id);
   if (publication !== "playable") return <PlayerShell pageTitle={pageTitle}><section className="player-panel"><span className="player-eyebrow">สถานะแฟ้มคดี</span><h1 className="mt-3 text-2xl">{publication === "closed" ? "แฟ้มนี้ยังไม่เปิดให้เล่น" : "ยังตรวจสอบสถานะแฟ้มไม่ได้"}</h1><p className="mt-3">กลับไปเลือกแฟ้มที่เปิดให้สำรวจ หรือลองใหม่ภายหลัง</p><Link className="player-button mt-4" href="/play">กลับไปยังแฟ้มคดี</Link></section></PlayerShell>;
+  const assistantUrl = await getPlayerAssistantUrl(kaGame.slug);
   const fallbackNodes: PlayerTimelineNode[] = kaTimelineNodes[caseSlug];
   const publishedTimeline = await getPlayerTimeline({
     gameSlug: kaGame.slug,
@@ -50,6 +51,7 @@ export async function KaCaseInteriorPage({
       <GameSessionStarter gameId={kaGame.id} subgameId={subgame.id} />
       <div className="quantum-interior">
         <PageIntro description={description} eyebrow={`${kaGame.title} / ${subgame.subtitle}`} meta={meta} title={subgame.title} />
+        <AiCompanionNotice href={assistantUrl} />
         <section className="quantum-opening-grid" data-player-reveal="primary">
           <DossierPanel alt={imageAlt} eyebrow={`CASE SCENE / ${subgame.subtitle}`} image={image} subtitle="อ่านหลักฐาน ตั้งสมมติฐาน และออกแบบการป้องกันจากสิ่งที่หลักฐานรองรับ" title="เริ่มจากสิ่งที่ข้อมูลบอกคุณ">
             <UtilityStrip>
@@ -86,7 +88,6 @@ export async function KaCaseInteriorPage({
           <EvidenceDesk gameTitle={kaGame.title} guideScope="ka-case" initialSlug={caseSlug} nodeLabels={kaNodeLabels} nodes={nodes} subgameId={subgame.id} />
         </div>
 
-        <AiCompanionNotice />
         <DecisionPanel guideTarget="ka-submit" action={<InvestigativeAction href={`/submit?subgameId=${subgame.id}`}>เปิดภารกิจส่งคำตอบ</InvestigativeAction>} eyebrow="SUBMISSION / NETLOOD CITY" title={kaSubmissionGuide.title}>
           <p>ตอบคำถามทั้ง 5 ข้อ แล้วแนบสไลด์และไฟล์ PDF บทสนทนากับ AI ที่ใช้ช่วยคิด ข้อมูลที่ส่งจะไม่เผยแพร่สาธารณะ และใช้สำหรับงานวิจัย</p>
           <ul className="interior-thinking-list">

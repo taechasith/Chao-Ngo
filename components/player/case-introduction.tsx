@@ -1,3 +1,4 @@
+import { AiCompanionNotice } from "./ai-companion-notice";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -35,6 +36,8 @@ export async function CaseIntroduction({
           <h1>{title}</h1>
           <p className="font-bold text-white/80">{subtitle}</p>
         </header>
+
+        <AiCompanionNotice />
 
         <section aria-label={`พื้นที่สืบสวน ${subtitle}`} className="player-case-workspace" data-player-reveal="primary">
           <div className="player-case-visual">
@@ -78,15 +81,7 @@ export async function CaseIntroduction({
 
         <EvidenceDesk initialSlug={subgameId.endsWith("space") ? "space" : "quantum"} nodes={nodes} />
 
-        <section className="player-ai-strip" data-player-reveal="primary">
-          <div>
-            <span className="player-eyebrow">REQUIRED / AI คู่คิด / GEMINI</span>
-            <h2 className="mt-2">ก่อนส่งคำตอบ ต้องคุยกับ AI คู่คิด</h2>
-            <p>ใช้ Gemini เพื่อถาม อธิบายแนวคิด และทดสอบคำอธิบายของคุณ จากนั้นบันทึกบทสนทนาเป็น PDF เพื่อแนบตอนส่งคำตอบ</p>
-            <p>AI อาจตอบผิดได้ ตรวจคำตอบกับหลักฐานในแฟ้มคดีเสมอ คำตอบสุดท้ายยังเป็นของคุณ</p>
-          </div>
-          <a className="player-button player-button--primary" href="https://gemini.google.com/gem/45cb7e3f0314" rel="noopener noreferrer" target="_blank">เปิด Gemini แล้วกลับมาแนบ PDF</a>
-        </section>
+
       </div>
     </AppShell>
   );
