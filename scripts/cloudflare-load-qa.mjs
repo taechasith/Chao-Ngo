@@ -27,7 +27,7 @@ async function cf(path,method='GET',body){
 const query=async sql=>{for(let retry=0;;retry++){try{return (await cf(`/accounts/${account}/d1/database/${dbId}/query`,'POST',{sql,params:[]}))[0]?.results||[];}catch(e){if(!/^SELECT/i.test(sql)||retry>=3||!e.message.includes('429'))throw e;await new Promise(r=>setTimeout(r,1000*2**retry));}}};
 if(!process.env.PRODUCTION_SOURCE || !/^[a-f0-9]{40}$/.test(process.env.PRODUCTION_SOURCE))throw new Error('Pin the production commit');
 const q=x=>`'${String(x).replaceAll("'","''")}'`;
-function cli(args,input){const r=spawnSync(process.execPath,['node_modules/wrangler/bin/wrangler.js',...args],{encoding:'utf8',input,env:{...process.env,WRANGLER_LOG_PATH:`${process.env.RUNNER_TEMP}/chao-ngo-qa.log`},maxBuffer:20*1024*1024});if(r.status!==0){console.log((r.stderr||r.stdout).slice(-3000));throw new Error(`Wrangler ${args.slice(0,2).join(' ')} failed`);}console.log((r.stdout||'').slice(-2500));return r.stdout;}
+function cli(args,input){const r=spawnSync(process.execPath,['node_modules/wrangler/bin/wrangler.js',...args],{encoding:'utf8',input,env:{...process.env,WRANGLER_LOG_PATH:`${process.env.RUNNER_TEMP}/chao-ngo-qa.log`},maxBuffer:20*1024*1024});if(r.status!==0){console.log((r.stderr||r.stdout).slice(-3000));throw new Error(`Wrangler ${args.slice(0,2).join(' ')} failed`,{cause:new Error((r.stderr||r.stdout).slice(-3000))});}console.log((r.stdout||'').slice(-2500));return r.stdout;}
 function signed(token){return '__Secure-better-auth.session_token='+encodeURIComponent(token+'.'+createHmac('sha256',secret).update(token).digest('base64'));}
 let inflight=0,peak=0,r2Slots=0;const r2Waiters=[];
 async function withR2Slot(work){if(r2Slots>=10)await new Promise(resolve=>r2Waiters.push(resolve));else r2Slots++;try{return await work();}finally{const next=r2Waiters.shift();if(next)next();else r2Slots--;}}
@@ -63,7 +63,8 @@ try{
  await writeFile('dist/server/wrangler.qa.json',JSON.stringify(generated));
  // Secret upload creates only the new QA worker; never modify production secrets.
  cli(['secret','put','BETTER_AUTH_SECRET','--config','dist/server/wrangler.qa.json'],secret+'\n');createdWorker=true;
- cli(['deploy','--config','dist/server/wrangler.qa.json']);
+ await new Promise(r=>setTimeout(r,10000));
+ for(let attempt=0;;attempt++){try{cli(['deploy','--config','dist/server/wrangler.qa.json']);break;}catch(error){if(attempt>=2||!error.cause?.message.includes("Cannot read properties of null (reading 'tag')"))throw error;report.setupDeployRetries=(report.setupDeployRetries||0)+1;await new Promise(r=>setTimeout(r,10000));}}
  tailProcess=spawn(process.execPath,['node_modules/wrangler/bin/wrangler.js','tail','--format','json','--config','dist/server/wrangler.qa.json'],{env:process.env,stdio:['ignore','pipe','ignore']});
  let tailBuffer='',tailJson='';report.tailEvents=0;
  const captureTail=event=>{report.tailEvents++;report.tailOutcomes[event.outcome]=(report.tailOutcomes[event.outcome]||0)+1;for(const ex of event.exceptions||[]){if(report.cloudflareExceptions.length<30)report.cloudflareExceptions.push({name:ex.name,message:String(ex.message).slice(0,1000)});}for(const log of event.logs||[]){const msg=(log.message||[]).join(' ');if(/D1(?:_| transient| queue| connection)|SQLITE|overload|queue|exceeded|Error/i.test(msg)&&report.cloudflareWarnings.length<30)report.cloudflareWarnings.push({name:log.level,message:msg.slice(0,1000)});}};
@@ -143,15 +144,6 @@ try{
   const r=await request(u,`/api/submissions/${u.draft.submissionId}/preparation`,'PATCH',{aiCompanionUsed:true,additionalAiLinks:u.aiLinks});check(r.status,200,'AI preparation');
   check((await request(u,`/api/submissions/${u.draft.submissionId}/acknowledgement`,'POST',{acknowledged:true,consentVersion:'2026-09-21.1-ai-pdf'})).status,201,'synthetic PDF acknowledgement');
  });
- await query(`UPDATE session SET expiresAt=${Date.now()-60000}`);
- await phase('300 expired sessions rejected',users,async u=>{check((await request(u,`/api/submissions?subgameId=${u.subgameId}`)).status,401,'expired read');check((await request(u,`/api/submissions/${u.draft.submissionId}/finalize`,'POST')).status,401,'expired finalize');});
- await query('DELETE FROM session');
- for(const u of users){u.token=randomUUID();console.log(`::add-mask::${u.token}`);u.cookie=signed(u.token);}
- const reauthNow=Date.now();await query(`INSERT INTO session(id,token,userId,expiresAt,createdAt,updatedAt) VALUES ${users.map(u=>`(${q(randomUUID())},${q(u.token)},${q(u.id)},${reauthNow+3600000},${reauthNow},${reauthNow})`).join(',')}`);
- await phase('300 reauthenticated sessions restore answers profiles and AI links',users,async u=>{
-  const draft=await readDraft(u);verifyAnswers(u,draft);check(draft.preparation.aiCompanionUsed,true,'AI confirmation');check(JSON.stringify(draft.preparation.additionalAiLinks),JSON.stringify(u.aiLinks),'AI links');
-  const r=await request(u,'/api/player-research-profile');check(r.status,200,'restored profile');check(r.body.profile.institution,u.id,'restored profile owner');
- });
  await phase('300 concurrent questionnaire completions',users,async u=>{for(const form of [u.draft.answerForm,u.draft.posttestForm].filter(Boolean))check((await request(u,`/api/questionnaire-sessions/${form.sessionId}/complete`,'POST')).status,200,'complete');});
  // Valid, uncompressed PDF documents with per-owner text, sized exactly as reported.
  function pdfBytes(userId,targetBytes){
@@ -183,6 +175,15 @@ try{
   for(const f of u.files){const received=f.kind==='ai_chat_pdf'?draft.uploads.aiChatPdf:draft.uploads.answerAttachment;check(received.id,f.uploadId,'receipt file owner');check(received.bytes,f.bytes,'receipt file size');}
  });
  await phase('300 concurrent repeated finalize requests without duplicates',users,async u=>check((await request(u,`/api/submissions/${u.draft.submissionId}/finalize`,'POST')).status,200,'idempotent finalize'));
+ await query(`UPDATE session SET expiresAt=${Date.now()-60000}`);
+ await phase('300 expired sessions rejected',users,async u=>{check((await request(u,`/api/submissions?subgameId=${u.subgameId}`)).status,401,'expired read');check((await request(u,`/api/submissions/${u.draft.submissionId}/finalize`,'POST')).status,401,'expired finalize');});
+ await query('DELETE FROM session');
+ for(const u of users){u.token=randomUUID();console.log(`::add-mask::${u.token}`);u.cookie=signed(u.token);}
+ const reauthNow=Date.now();await query(`INSERT INTO session(id,token,userId,expiresAt,createdAt,updatedAt) VALUES ${users.map(u=>`(${q(randomUUID())},${q(u.token)},${q(u.id)},${reauthNow+3600000},${reauthNow},${reauthNow})`).join(',')}`);
+ await phase('300 reauthenticated sessions restore answers profiles and AI links',users,async u=>{
+  const draft=await readDraft(u);verifyAnswers(u,draft);check(draft.preparation.aiCompanionUsed,true,'AI confirmation');check(JSON.stringify(draft.preparation.additionalAiLinks),JSON.stringify(u.aiLinks),'AI links');
+  const r=await request(u,'/api/player-research-profile');check(r.status,200,'restored profile');check(r.body.profile.institution,u.id,'restored profile owner');
+ });
  stopPolling=true;await polling;
  const counts=(await query(`SELECT
  (SELECT COUNT(*) FROM submissions WHERE status='submitted') submitted,

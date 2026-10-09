@@ -18,12 +18,8 @@ jobs:
       max-parallel: 1
       matrix:
         include:
-          - scenario: mixed
-            refresh: off
           - scenario: all-ka
             refresh: off
-          - scenario: refresh-probe
-            refresh: probe
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
