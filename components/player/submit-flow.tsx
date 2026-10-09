@@ -750,7 +750,7 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
             <p className="mt-3 text-sm leading-6 text-white/65">ลิงก์ที่ส่งจะเก็บในพื้นที่ส่วนตัวของระบบและใช้สำหรับงานวิจัยโดยทีมที่ได้รับสิทธิ์ ตามระยะเวลาเก็บรักษาเดียวกับงานส่ง การตั้งค่าการแชร์บนบริการ AI ต้นทางยังเป็นไปตามที่คุณเลือก</p>
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <button className="player-button" disabled={ai.pending || saving} type="button" onClick={() => void ai.flush()}>{ai.pending ? "กำลังบันทึก…" : "บันทึกข้อมูล AI / ลองอีกครั้ง"}</button>
-              <p className="text-sm text-white/65" role="status">{ai.status || "ยังไม่มีลิงก์ AI อื่น"}</p>
+              <p className="text-sm text-white/65" role="status">{ai.status || (ai.linksText.trim() ? "โหลดลิงก์ AI ที่บันทึกไว้แล้ว" : "ยังไม่มีลิงก์ AI อื่น")}</p>
             </div>
           </div>
         </Panel>
