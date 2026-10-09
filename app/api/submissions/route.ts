@@ -140,12 +140,19 @@ async function loadSubmission(row: SubmissionRow) {
   const answerAttachment = uploadRows[1].results[0] as UploadSummary | undefined;
   const acknowledgement = uploadRows[2].results[0] as { acknowledged_at: string } | undefined;
 
-  const previous = requirements.instrumentVersion === "ka-submission-v2"
-    ? await env.DB.prepare("SELECT previous_session_id FROM submission_form_migrations WHERE submission_id = ?")
-      .bind(row.id).first<{ previous_session_id: string }>()
-    : null;
+  let history: {previous_session_id:string}[] = [];
+  if (requirements.requiresAnswerForm) {
+    try { history = (await env.DB.prepare("SELECT previous_session_id FROM submission_form_history WHERE submission_id = ? ORDER BY created_at, rowid").bind(row.id).all<{previous_session_id:string}>()).results; }
+    catch (error) {
+      if (!(error instanceof Error) || !/no such table:.*submission_form_history/.test(error.message)) throw error;
+      const previous = await env.DB.prepare("SELECT previous_session_id FROM submission_form_migrations WHERE submission_id = ?").bind(row.id).first<{previous_session_id:string}>();
+      if (previous) history = [previous];
+    }
+  }
+  const previousForms = await Promise.all(history.map(item => loadQuestionnaire(item.previous_session_id)));
   return {
-    previousAnswerForm: previous ? await loadQuestionnaire(previous.previous_session_id) : null,
+    previousAnswerForm: previousForms[0] ?? null,
+    previousAnswerForms: previousForms.filter(Boolean),
     acknowledgement: acknowledgement ?? null,
     answerForm,
     posttestForm,

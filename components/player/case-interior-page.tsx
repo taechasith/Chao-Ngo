@@ -1,5 +1,6 @@
 import { getCasePublication } from "../../lib/server/content/player-catalog";
 import Link from "next/link";
+import { AiCompanionNotice } from "./ai-companion-notice";
 
 import { CaseProgress } from "./case-progress";
 import { EvidenceDesk } from "./evidence-desk";
@@ -55,10 +56,7 @@ export async function CaseInteriorPage({ pageTitle, eyebrow, title, subtitle, de
           </aside>
         </section>
         <div className="quantum-evidence-anchor"><EvidenceDesk initialSlug={timelineSlug} nodes={nodes} /></div>
-        <DecisionPanel guideTarget="case-ai" action={<InvestigativeAction href={assistantUrl} intent="secondary" rel="noopener noreferrer" target="_blank">เปิด Gemini ↗</InvestigativeAction>} eyebrow="REQUIRED / AI คู่คิด / GEMINI" title="ก่อนส่งคำตอบ ต้องคุยกับ AI คู่คิด">
-          <p>ใช้ Gemini เพื่อถาม อธิบายแนวคิด และทดสอบคำอธิบายของคุณ จากนั้นบันทึกบทสนทนาเป็น PDF เพื่อแนบตอนส่งคำตอบ</p>
-          <p>AI อาจตอบผิดได้ ตรวจคำตอบกับหลักฐานในแฟ้มคดีเสมอ คำตอบสุดท้ายยังเป็นของคุณ</p>
-        </DecisionPanel>
+        <AiCompanionNotice href={assistantUrl} />
       </div>
     </PlayerShell>
   );

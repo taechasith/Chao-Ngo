@@ -38,8 +38,8 @@ async function handlePOST(request: Request, context: { params: Promise<{ submiss
       ? await env.DB.prepare("SELECT id, version FROM questionnaires WHERE questionnaire_key = ? AND published = 1 ORDER BY created_at DESC LIMIT 1")
         .bind(form.questionnaire_key).first<{ id: string; version: string }>()
       : null;
-    const upgraded = current?.version === "ka-submission-v2" && form.version !== current.version;
-    const questionnaireId = upgraded ? current.id : form.questionnaire_id;
+    const upgraded = Boolean(current && form.questionnaire_id !== current.id);
+    const questionnaireId = upgraded && current ? current.id : form.questionnaire_id;
     const id = crypto.randomUUID();
     statements.push(env.DB.prepare("INSERT INTO questionnaire_sessions (id, user_id, questionnaire_id) VALUES (?, ?, ?)").bind(id, userId, questionnaireId));
     if (upgraded) migratedForms.push({ previous: oldId, current: id });
@@ -48,7 +48,7 @@ async function handlePOST(request: Request, context: { params: Promise<{ submiss
           JOIN questions old_q ON old_q.id = r.question_id
           JOIN questions new_q ON new_q.questionnaire_id = ? AND new_q.question_key =
             CASE old_q.question_key WHEN 'case_truth_model' THEN 'case_summary'
-              WHEN 'evidence_reasoning' THEN 'reasoning' WHEN 'prevention_system' THEN 'innovation' END
+              WHEN 'evidence_reasoning' THEN 'reasoning' WHEN 'prevention_system' THEN 'innovation' ELSE old_q.question_key END
           WHERE r.session_id = ?`).bind(questionnaireId, oldId).all<{ question_id: string; value_json: string }>()
       : await env.DB.prepare("SELECT question_id, value_json FROM responses WHERE session_id = ?")
         .bind(oldId).all<{ question_id: string; value_json: string }>();
@@ -64,6 +64,8 @@ async function handlePOST(request: Request, context: { params: Promise<{ submiss
   ).bind(id, userId, original.subgame_id, answer, posttest, submissionId));
   for (const migratedForm of migratedForms) statements.push(env.DB.prepare("INSERT INTO submission_form_migrations (submission_id, previous_session_id, current_session_id) VALUES (?, ?, ?)")
     .bind(id, migratedForm.previous, migratedForm.current));
+  const historyTable = migratedForms.length ? await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='submission_form_history'").first() : null;
+  if (historyTable) for (const form of migratedForms) statements.push(env.DB.prepare("INSERT INTO submission_form_history (submission_id,previous_session_id,current_session_id) VALUES (?,?,?)").bind(id,form.previous,form.current));
   try { await env.DB.batch(statements); }
   catch (error) { const raced = await child(); if (raced) return json({ submissionId: raced.id, status: "resumed" }); throw error; }
   return json({ submissionId: id, status: "created" }, 201);

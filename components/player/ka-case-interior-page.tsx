@@ -1,5 +1,6 @@
 import { getCasePublication } from "../../lib/server/content/player-catalog";
 import Link from "next/link";
+import { AiCompanionNotice } from "./ai-companion-notice";
 
 import { kaGame, kaNodeLabels, kaSubmissionGuide, kaSubgames, kaTimelineNodes, type KaSubgameSlug } from "../../lib/ka-casefiles";
 import { getPlayerTimeline, type PlayerTimelineNode } from "../../lib/server/content/player-evidence";
@@ -85,8 +86,9 @@ export async function KaCaseInteriorPage({
           <EvidenceDesk gameTitle={kaGame.title} guideScope="ka-case" initialSlug={caseSlug} nodeLabels={kaNodeLabels} nodes={nodes} subgameId={subgame.id} />
         </div>
 
+        <AiCompanionNotice />
         <DecisionPanel guideTarget="ka-submit" action={<InvestigativeAction href={`/submit?subgameId=${subgame.id}`}>เปิดภารกิจส่งคำตอบ</InvestigativeAction>} eyebrow="SUBMISSION / NETLOOD CITY" title={kaSubmissionGuide.title}>
-          <p>ตอบคำถามทั้ง 5 ข้อ แล้วแนบสไลด์และลิงก์บทสนทนากับ AI ที่ใช้ช่วยคิด ข้อมูลที่ส่งจะไม่เผยแพร่สาธารณะ และใช้สำหรับงานวิจัย</p>
+          <p>ตอบคำถามทั้ง 5 ข้อ แล้วแนบสไลด์และไฟล์ PDF บทสนทนากับ AI ที่ใช้ช่วยคิด ข้อมูลที่ส่งจะไม่เผยแพร่สาธารณะ และใช้สำหรับงานวิจัย</p>
           <ul className="interior-thinking-list">
             {kaSubmissionGuide.steps.map((item, index) => <li key={item}><span>{String(index + 1).padStart(2, "0")}</span><div><p>{item}</p></div></li>)}
           </ul>

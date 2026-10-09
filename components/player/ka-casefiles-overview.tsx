@@ -92,8 +92,8 @@ export function KaCasefilesOverview({ cases, unavailable }: { cases: PlayerCase[
       <section className="player-ai-strip" data-player-reveal="primary">
         <div>
           <span className="player-eyebrow">SUBMISSION / ส่งคำอธิบาย</span>
-          <h2>สรุปคดี พร้อมส่งสไลด์และลิงก์ AI</h2>
-          <p>ตอบ 5 คำถามเกี่ยวกับบทสรุป เหตุผล ปัญหาด้าน Finance หรือ Bio นวัตกรรม และความมั่นใจ แล้วแนบสไลด์กับลิงก์บทสนทนา AI สำหรับงานวิจัย</p>
+          <h2>สรุปคดี พร้อมส่งสไลด์และ PDF บทสนทนา AI</h2>
+          <p>ตอบ 5 คำถามเกี่ยวกับบทสรุป เหตุผล ปัญหาด้าน Finance หรือ Bio นวัตกรรม และความมั่นใจ แล้วแนบสไลด์กับPDF บทสนทนา AI สำหรับงานวิจัย</p>
         </div>
         <Link className="player-button" href="/play">กลับไปเลือกแฟ้มอื่น</Link>
       </section>

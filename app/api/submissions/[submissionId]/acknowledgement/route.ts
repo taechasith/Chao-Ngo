@@ -17,8 +17,8 @@ function response(body: Record<string, unknown>, status = 200): Response {
 
 async function draftForUser(submissionId: string, userId: string) {
   return env.DB.prepare(
-    "SELECT id, subgame_id FROM submissions WHERE id = ? AND user_id = ? AND status = 'draft'",
-  ).bind(submissionId, userId).first<{ id: string; subgame_id: string }>();
+    "SELECT id, subgame_id, questionnaire_session_id FROM submissions WHERE id = ? AND user_id = ? AND status = 'draft'",
+  ).bind(submissionId, userId).first<{ id: string; subgame_id: string; questionnaire_session_id: string | null }>();
 }
 
 export async function POST(request: Request, context: RouteContext): Promise<Response> {
@@ -30,7 +30,7 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
   const { submissionId } = await context.params;
   const draft = await draftForUser(submissionId, participant.userId);
   if (!draft) return response({ code: "DRAFT_NOT_FOUND" }, 404);
-  if (!(await getSubmissionRequirements(env.DB, draft.subgame_id)).requiresAiChatPdf) {
+  if (!(await getSubmissionRequirements(env.DB, draft.subgame_id, draft.questionnaire_session_id)).requiresAiChatPdf) {
     return response({ code: "ACKNOWLEDGEMENT_NOT_REQUIRED" }, 409);
   }
 
@@ -63,7 +63,7 @@ export async function DELETE(request: Request, context: RouteContext): Promise<R
   const { submissionId } = await context.params;
   const draft = await draftForUser(submissionId, participant.userId);
   if (!draft) return response({ code: "DRAFT_NOT_FOUND" }, 404);
-  if (!(await getSubmissionRequirements(env.DB, draft.subgame_id)).requiresAiChatPdf) {
+  if (!(await getSubmissionRequirements(env.DB, draft.subgame_id, draft.questionnaire_session_id)).requiresAiChatPdf) {
     return response({ code: "ACKNOWLEDGEMENT_NOT_REQUIRED" }, 409);
   }
 
