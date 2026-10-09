@@ -1,3 +1,4 @@
+import { databaseBusyResponse } from "../../../../lib/server/d1-overload";
 import { toNextJsHandler } from "better-auth/next-js";
 import { env } from "cloudflare:workers";
 
@@ -51,7 +52,12 @@ async function authHandler(request: Request): Promise<Response> {
     }
   }
 
-  return getAuth().handler(request);
+  const response = await getAuth().handler(request);
+  if (pathname === "/api/auth/get-session" && response.status === 500) {
+    const failure = await response.clone().json().catch(() => null) as { code?: string } | null;
+    if (failure?.code === "FAILED_TO_GET_SESSION") return databaseBusyResponse();
+  }
+  return response;
 }
 
 export const { DELETE, GET, PATCH, POST, PUT } = toNextJsHandler(authHandler);

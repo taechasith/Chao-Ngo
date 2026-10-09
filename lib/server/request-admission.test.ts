@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { AdmissionBusyError, isFinalizationRequest, RequestAdmission } from "./request-admission";
+import { AdmissionBusyError, isFinalizationRequest, RequestAdmission, needsDatabaseAdmission, isSubmissionUpload, uploadAdmissionCost } from "./request-admission";
 
 describe("global finalization admission", () => {
   it("runs 300 callers in order with at most 20 active and preserves each result", async () => {
@@ -42,5 +42,30 @@ describe("global finalization admission", () => {
       expect(isFinalizationRequest(new Request(`https://example.test${path}`, { method: "POST" }))).toBe(false);
     }
     expect(isFinalizationRequest(new Request("https://example.test/api/submissions/id/finalize"))).toBe(false);
+  });
+});
+
+
+describe("whole-game D1 admission", () => {
+  it("gates auth, reads, autosave, refresh, uploads and server-rendered pages; assets stay separate", () => {
+    for (const path of ["/api/auth/get-session", "/api/submissions", "/api/questionnaires/revisions", "/api/questionnaire-sessions/s/responses", "/api/questionnaire-sessions/s/refresh", "/submit", "/play/ka-casefiles", "/privacy"]) {
+      expect(needsDatabaseAdmission(new Request(`https://example.test${path}`))).toBe(true);
+    }
+    expect(needsDatabaseAdmission(new Request("https://example.test/assets/app.js"))).toBe(false);
+    const upload = new Request("https://example.test/api/submissions/id/uploads", { method:"POST", headers:{"Content-Length":String(20*1024*1024+2000)} });
+    expect(isSubmissionUpload(upload)).toBe(true);
+    expect(uploadAdmissionCost(upload)).toBe(11);
+    expect(uploadAdmissionCost(new Request(upload.url,{method:"POST"}))).toBe(12);
+  });
+  it("keeps weighted permits FIFO and releases each one exactly once", async () => {
+    const admission = new RequestAdmission(3);
+    const first = await admission.acquire(2), started:string[]=[];
+    const large = admission.run(async()=>{started.push("large");return "saved";},3);
+    const small = admission.run(async()=>{started.push("small");return "saved";});
+    await Promise.resolve();expect(started).toEqual([]);
+    first();first();
+    expect(await large).toBe("saved");expect(await small).toBe("saved");
+    expect(started).toEqual(["large","small"]);
+    const full=await admission.acquire(3);full();
   });
 });

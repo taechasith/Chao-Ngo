@@ -67,7 +67,7 @@ export function ResearchProfileEditor() {
   }
   async function save(event: FormEvent) {
     event.preventDefault();
-    if (!draft || saving || draft.age < 18 || draft.age > 120) return;
+    if (!draft || saving || draft.age < 0 || draft.age > 120) return;
     const pendingSkill = skillInput.trim();
     if (pendingSkill && (pendingSkill.length < 2 || pendingSkill.length > 40 || draft.personalSkills.length >= 8 || draft.personalSkills.some((item) => item.toLocaleLowerCase() === pendingSkill.toLocaleLowerCase()))) {
       setMessage("ตรวจทักษะที่กำลังพิมพ์: ต้องยาว 2–40 ตัวอักษร ไม่ซ้ำ และมีรวมไม่เกิน 8 รายการ");
@@ -103,7 +103,7 @@ export function ResearchProfileEditor() {
     </> : null}
     {editing && draft ? <form className="player-research-form" onSubmit={save}>
       <div className="player-research-form-grid">
-        <label>อายุ (ปี)<input className="player-input" max={120} min={18} onChange={(event) => setDraft({ ...draft, age: Number(event.target.value) })} ref={ageInput} required type="number" value={draft.age || ""} /></label>
+        <label>อายุ (ปี)<input className="player-input" max={120} min={0} onChange={(event) => setDraft({ ...draft, age: Number(event.target.value) })} ref={ageInput} required type="number" value={draft.age ?? ""} /></label>
         <label>ระดับการศึกษา<select className="player-input" onChange={(event) => setDraft({ ...draft, educationLevel: event.target.value as ResearchProfile["educationLevel"] })} value={draft.educationLevel}>{educationOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label>เพศ (ไม่บังคับ)<select className="player-input" onChange={(event) => setDraft({ ...draft, gender: event.target.value ? event.target.value as ResearchProfile["gender"] : null })} value={draft.gender ?? ""}><option value="">ไม่ระบุ</option>{genderOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label>สถานศึกษา (ไม่บังคับ)<input className="player-input" maxLength={120} onChange={(event) => setDraft({ ...draft, institution: event.target.value || null })} value={draft.institution ?? ""} /></label>
@@ -112,7 +112,7 @@ export function ResearchProfileEditor() {
       <div className="player-research-form-group"><h3>ทักษะส่วนตัว</h3><p>พิมพ์ทักษะที่คุณอยากระบุ เช่น วิเคราะห์ข้อมูล หรือการเล่าเรื่อง เพิ่มได้สูงสุด 8 รายการ</p><div className="player-skill-add"><input aria-label="ทักษะส่วนตัว" className="player-input" maxLength={40} onChange={(event) => setSkillInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addSkill(); } }} placeholder="พิมพ์ทักษะของคุณ" value={skillInput} /><button className="player-button" disabled={saving || !skillInput.trim()} onClick={addSkill} type="button"><Plus aria-hidden="true" size={16} />เพิ่มทักษะ</button></div><div aria-label="รายการทักษะส่วนตัว" className="player-skill-list">{draft.personalSkills.map((skill) => <span key={skill}>{skill}<button aria-label={`ลบทักษะ ${skill}`} disabled={saving} onClick={() => setDraft({ ...draft, personalSkills: draft.personalSkills.filter((item) => item !== skill) })} type="button"><X aria-hidden="true" size={14} /></button></span>)}</div></div>
       <p className="player-research-note">ข้อมูลที่แก้จะใช้เป็นโปรไฟล์วิจัยปัจจุบัน คำตอบแบบสอบถามก่อนเล่นและคำแนะนำเดิมจะไม่ถูกคำนวณย้อนหลัง</p>
       {message ? <p aria-live="polite" className="player-profile-status">{message}</p> : null}
-      <div className="player-research-form-actions"><button className="player-button player-button--primary" disabled={saving || draft.age < 18 || draft.age > 120} type="submit">{saving ? "กำลังบันทึก…" : "บันทึกข้อมูล"}</button><button className="player-button" disabled={saving} onClick={closeEditor} type="button">ยกเลิก</button></div>
+      <div className="player-research-form-actions"><button className="player-button player-button--primary" disabled={saving || draft.age < 0 || draft.age > 120} type="submit">{saving ? "กำลังบันทึก…" : "บันทึกข้อมูล"}</button><button className="player-button" disabled={saving} onClick={closeEditor} type="button">ยกเลิก</button></div>
     </form> : null}
     {!editing && message ? <p className="player-profile-status" role="status">{message}</p> : null}
   </section>;

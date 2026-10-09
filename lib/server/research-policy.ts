@@ -20,7 +20,7 @@ export const researchNotice: ResearchNotice = {
   controllerName: "CreativeLabTH Group",
   dataNoticeVersion,
   lastUpdated: "2026-09-25",
-  minimumParticipantAge: 18,
+  minimumParticipantAge: 0,
   purpose:
     "แพลตฟอร์มนี้ใช้เพื่อพัฒนาและประเมินประสบการณ์การเรียนรู้วิทยาศาสตร์ผ่านเกมสืบสวนและผู้ช่วย AI โดยวิเคราะห์ผลในรูปแบบที่ลดการระบุตัวบุคคลเท่าที่ทำได้",
   dataCategories: [
@@ -64,7 +64,7 @@ export function isResearchCollectionReady(policy: ResearchCollectionPolicy): boo
       policy.privateStorageReady &&
       policy.consentVersion &&
       policy.dataNoticeVersion &&
-      policy.minimumParticipantAge >= 18 &&
+      policy.minimumParticipantAge >= 0 &&
       policy.retentionAndWithdrawalPolicy,
   );
 }

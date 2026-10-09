@@ -12,9 +12,9 @@ describe("research collection policy", () => {
     expect(researchCollectionPolicy.privateStorageReady).toBe(true);
   });
 
-  it("keeps a complete notice versioned and adult-only", () => {
+  it("keeps a complete notice versioned without an age eligibility threshold", () => {
     expect(researchNotice.consentVersion).toBe(researchNotice.dataNoticeVersion);
-    expect(researchNotice.minimumParticipantAge).toBe(18);
+    expect(researchNotice.minimumParticipantAge).toBe(0);
     expect(researchNotice.controllerContactEmail).toContain("@");
   });
 
@@ -24,7 +24,7 @@ describe("research collection policy", () => {
         consentVersion: "2026-09",
         dataNoticeVersion: "2026-09",
         enabled: true,
-        minimumParticipantAge: 18,
+        minimumParticipantAge: 0,
         retentionAndWithdrawalPolicy: "retention-v1",
         privateStorageReady: false,
       }),
@@ -35,7 +35,7 @@ describe("research collection policy", () => {
         consentVersion: "2026-09",
         dataNoticeVersion: "2026-09",
         enabled: true,
-        minimumParticipantAge: 18,
+        minimumParticipantAge: 0,
         retentionAndWithdrawalPolicy: "retention-v1",
         privateStorageReady: true,
       }),

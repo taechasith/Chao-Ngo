@@ -1,0 +1,53 @@
+name: D1 capacity 300-player Cloudflare QA
+
+on:
+  push:
+    branches: [codex/d1-capacity-all-ages]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chao-ngo-isolated-load-qa
+  cancel-in-progress: false
+
+jobs:
+  load:
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - scenario: mixed
+            refresh: stress
+          - scenario: all-ka
+            refresh: off
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Validate the measured harness
+        run: node --check scripts/cloudflare-load-qa.mjs
+      - name: Load isolated Cloudflare resources with 300 synthetic players
+        run: node scripts/cloudflare-load-qa.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: c24fed68f8dc59cc339bd821d215bba8
+          NEXT_PUBLIC_TURNSTILE_SITE_KEY: 0x4AAAAAAFAv4gMFljB7eBAU
+          QA_SOURCE: ${{ github.sha }}
+          QA_SCENARIO: ${{ matrix.scenario }}
+          QA_REFRESH_MODE: ${{ matrix.refresh }}
+      - name: Save results, including failures and cleanup status
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cloudflare-300-${{ matrix.scenario }}
+          path: qa-results/results.json
+          if-no-files-found: warn
+          retention-days: 14

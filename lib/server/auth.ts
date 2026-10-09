@@ -24,7 +24,15 @@ export function getAuthReadinessForRuntime() {
   });
 }
 
+let cached: { database: D1Database; secret?: string; url?: string; clientId?: string; clientSecret?: string; auth: ReturnType<typeof createAuth> } | undefined;
 export function getAuth() {
+  if (cached?.database === bindings.DB && cached.secret === bindings.BETTER_AUTH_SECRET && cached.url === bindings.BETTER_AUTH_URL && cached.clientId === bindings.GOOGLE_CLIENT_ID && cached.clientSecret === bindings.GOOGLE_CLIENT_SECRET) return cached.auth;
+  const auth = createAuth();
+  cached = { database: bindings.DB, secret: bindings.BETTER_AUTH_SECRET, url: bindings.BETTER_AUTH_URL, clientId: bindings.GOOGLE_CLIENT_ID, clientSecret: bindings.GOOGLE_CLIENT_SECRET, auth };
+  return auth;
+}
+
+function createAuth() {
   const readiness = getAuthReadinessForRuntime();
 
   if (!readiness.isReady) {
@@ -32,7 +40,7 @@ export function getAuth() {
   }
   const google = getGoogleAuthConfigurationForRuntime();
 
-  return betterAuth({
+  const auth = betterAuth({
     baseURL: readiness.baseURL,
     database: bindings.DB,
     emailAndPassword: { enabled: false },
@@ -76,4 +84,5 @@ export function getAuth() {
       },
     },
   });
+  return auth;
 }

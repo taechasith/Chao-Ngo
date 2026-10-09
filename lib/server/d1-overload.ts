@@ -1,4 +1,10 @@
-/** Only known transient D1 failures are retryable; never replay writes here. */
+/** Recognize transient infrastructure failures; never replay writes here. */
+export function isSessionServiceUnavailable(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const failure = error as { statusCode?: number; body?: { code?: string } };
+  return failure.statusCode === 500 && failure.body?.code === "FAILED_TO_GET_SESSION";
+}
+
 export function isD1Overload(error: unknown): boolean {
   const seen = new Set<unknown>();
   let current = error;
@@ -11,7 +17,7 @@ export function isD1Overload(error: unknown): boolean {
 }
 
 export function isRetryableD1Error(error: unknown): boolean {
-  if (isD1Overload(error)) return true;
+  if (isD1Overload(error) || isSessionServiceUnavailable(error)) return true;
   const seen = new Set<unknown>();
   let current = error;
   while (current instanceof Error && !seen.has(current)) {
@@ -37,7 +43,7 @@ export function withD1RetryableErrorHandling<Args extends unknown[]>(
       return await handler(...args);
     } catch (error) {
       if (!isRetryableD1Error(error)) throw error;
-      console.warn(isD1Overload(error) ? "D1 queue overloaded: player request can be retried" : "D1 connection lost: player request can be retried");
+      console.warn(isD1Overload(error) ? "D1 queue overloaded: player request can be retried" : isSessionServiceUnavailable(error) ? "Session service unavailable: player request can be retried" : "D1 connection lost: player request can be retried");
       return databaseBusyResponse();
     }
   };
