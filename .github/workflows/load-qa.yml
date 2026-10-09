@@ -1,0 +1,59 @@
+name: Latest 300-player Cloudflare QA
+
+on:
+  push:
+    branches: [codex/load-300-latest-20261010]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chao-ngo-isolated-load-qa
+  cancel-in-progress: false
+
+jobs:
+  load:
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        scenario: [mixed, all-ka]
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Verify application matches the production source exactly
+        run: |
+          set -euo pipefail
+          changes=$(git diff --name-only "$PRODUCTION_SOURCE" HEAD -- . ':!scripts/cloudflare-load-qa.mjs' ':!.github/workflows/load-qa.yml')
+          if [ -n "$changes" ]; then
+            echo "Application differs from pinned production source:"
+            echo "$changes"
+            exit 1
+          fi
+          node --check scripts/cloudflare-load-qa.mjs
+        env:
+          PRODUCTION_SOURCE: 5c00936a649822e27447c155e25cbc5b5d618c4d
+      - name: Load isolated Cloudflare resources with 300 synthetic players
+        run: node scripts/cloudflare-load-qa.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: c24fed68f8dc59cc339bd821d215bba8
+          NEXT_PUBLIC_TURNSTILE_SITE_KEY: 0x4AAAAAAFAv4gMFljB7eBAU
+          PRODUCTION_SOURCE: 5c00936a649822e27447c155e25cbc5b5d618c4d
+          QA_SCENARIO: ${{ matrix.scenario }}
+      - name: Save results, including failures and cleanup status
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cloudflare-300-${{ matrix.scenario }}
+          path: qa-results/results.json
+          if-no-files-found: warn
+          retention-days: 14
