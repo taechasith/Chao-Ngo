@@ -75,28 +75,36 @@ function finalizationUpdate(
   userId: string,
   consentVersion: string,
   requiresAiChatPdf: boolean,
+  answerSessionId: string | null,
+  posttestSessionId: string | null,
 ): D1PreparedStatement {
   if (requiresAiChatPdf) {
     return env.DB.prepare(
       `UPDATE submissions SET status = 'submitted', submitted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
         WHERE id = ? AND user_id = ? AND status = 'draft'
+          AND questionnaire_session_id IS ? AND posttest_session_id IS ?
+          AND (questionnaire_session_id IS NULL OR EXISTS (SELECT 1 FROM questionnaire_sessions qs JOIN questionnaires q ON q.id=qs.questionnaire_id WHERE qs.id=submissions.questionnaire_session_id AND q.published=1))
+          AND (posttest_session_id IS NULL OR EXISTS (SELECT 1 FROM questionnaire_sessions qs JOIN questionnaires q ON q.id=qs.questionnaire_id WHERE qs.id=submissions.posttest_session_id AND q.published=1))
           AND EXISTS (SELECT 1 FROM submission_consent_acknowledgements
             WHERE submission_id = submissions.id AND user_id = submissions.user_id AND consent_version = ?)
           AND EXISTS (SELECT 1 FROM consent_records WHERE user_id = submissions.user_id
             AND consent_version = ? AND research_participation = 1 AND withdrawn_at IS NULL)
           AND EXISTS (SELECT 1 FROM "user" WHERE id = submissions.user_id AND research_deletion_pending_at IS NULL
             AND (research_retention_expires_at IS NULL OR research_retention_expires_at > CURRENT_TIMESTAMP))`,
-    ).bind(submissionId, userId, aiChatUploadConsentVersion, consentVersion);
+    ).bind(submissionId, userId, answerSessionId, posttestSessionId, aiChatUploadConsentVersion, consentVersion);
   }
 
   return env.DB.prepare(
     `UPDATE submissions SET status = 'submitted', submitted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND user_id = ? AND status = 'draft'
+          AND questionnaire_session_id IS ? AND posttest_session_id IS ?
+          AND (questionnaire_session_id IS NULL OR EXISTS (SELECT 1 FROM questionnaire_sessions qs JOIN questionnaires q ON q.id=qs.questionnaire_id WHERE qs.id=submissions.questionnaire_session_id AND q.published=1))
+          AND (posttest_session_id IS NULL OR EXISTS (SELECT 1 FROM questionnaire_sessions qs JOIN questionnaires q ON q.id=qs.questionnaire_id WHERE qs.id=submissions.posttest_session_id AND q.published=1))
         AND EXISTS (SELECT 1 FROM consent_records WHERE user_id = submissions.user_id
           AND consent_version = ? AND research_participation = 1 AND withdrawn_at IS NULL)
         AND EXISTS (SELECT 1 FROM "user" WHERE id = submissions.user_id AND research_deletion_pending_at IS NULL
           AND (research_retention_expires_at IS NULL OR research_retention_expires_at > CURRENT_TIMESTAMP))`,
-  ).bind(submissionId, userId, consentVersion);
+  ).bind(submissionId, userId, answerSessionId, posttestSessionId, consentVersion);
 }
 
 async function handlePOST(request: Request, context: RouteContext): Promise<Response> {
@@ -184,6 +192,8 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
       participant.userId,
       participant.consentVersion,
       requirements.requiresAiChatPdf,
+      submission.questionnaire_session_id,
+      submission.posttest_session_id,
     ),
     env.DB.prepare(
       `UPDATE "user" SET research_retention_expires_at = datetime('now', '+' || ? || ' years')
@@ -208,7 +218,10 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
       .bind(participant.userId, submission.questionnaire_session_id, submission.posttest_session_id, submissionId, participant.userId),
   ]);
 
-  if ((results[0]?.meta.changes ?? 0) === 0) return response({ code: "SUBMISSION_ALREADY_FINALIZED" }, 409);
+  if ((results[0]?.meta.changes ?? 0) === 0) {
+    const current = await env.DB.prepare("SELECT status FROM submissions WHERE id=? AND user_id=?").bind(submissionId,participant.userId).first<{status:string}>();
+    return response({code:current?.status === "draft" ? "QUESTIONNAIRE_UPDATED" : "SUBMISSION_ALREADY_FINALIZED"},409);
+  }
   return response({ completion: await recalculateCompletionForUser(participant.userId), retentionYears, status: "submitted" }, 201);
 }
 

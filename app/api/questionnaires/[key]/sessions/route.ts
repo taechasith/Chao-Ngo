@@ -4,6 +4,8 @@ import { requireResearchParticipant } from "../../../../../lib/server/research-a
 import { isSameOriginRequest } from "../../../../../lib/server/request-security";
 import { isWithinPlayerMutationLimit } from "../../../../../lib/server/request-limits";
 
+import { refreshActiveSession, readQuestionnaireSession } from "../../../../../lib/server/questionnaires/live-updates";
+
 export const dynamic = "force-dynamic";
 
 type RouteContext = {
@@ -26,7 +28,7 @@ async function getPublishedQuestionnaire(key: string) {
     `SELECT id, questionnaire_key, version, title
        FROM questionnaires
       WHERE questionnaire_key = ? AND published = 1
-      ORDER BY created_at DESC
+      ORDER BY created_at DESC, rowid DESC
       LIMIT 1`,
   )
     .bind(key)
@@ -112,11 +114,17 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
     return noStoreResponse({ code: "QUESTIONNAIRE_NOT_FOUND" }, 404);
   }
 
-  const session = await env.DB.prepare(
-    `SELECT id, completed_at FROM questionnaire_sessions
-      WHERE user_id = ? AND questionnaire_id = ?
-      ORDER BY (completed_at IS NULL AND closed_at IS NULL) DESC, started_at DESC, id DESC LIMIT 1`,
-  ).bind(participant.userId, questionnaire.id).first<{ id: string; completed_at: string | null }>();
+  const previous = await env.DB.prepare(`SELECT s.id,s.completed_at FROM questionnaire_sessions s JOIN questionnaires q ON q.id=s.questionnaire_id
+    WHERE s.user_id=? AND q.questionnaire_key=? AND (s.closed_at IS NULL OR s.completed_at IS NOT NULL)
+    ORDER BY (s.completed_at IS NULL AND s.closed_at IS NULL) DESC,s.started_at DESC,s.rowid DESC LIMIT 1`).bind(participant.userId,key).first<{id:string;completed_at:string|null}>();
+  const current = previous && !previous.completed_at ? await refreshActiveSession(env.DB,participant.userId,previous.id) : null;
+  const form = previous ? await readQuestionnaireSession(env.DB,participant.userId,current?.sessionId ?? previous.id) : null;
+  const session = form ? {id:form.sessionId,completed_at:form.completed} : null;
+  const history = form ? await env.DB.prepare(`WITH RECURSIVE chain(id,depth) AS (
+    SELECT previous_session_id,0 FROM questionnaire_session_updates WHERE current_session_id=?
+    UNION ALL SELECT u.previous_session_id,chain.depth+1 FROM questionnaire_session_updates u JOIN chain ON u.current_session_id=chain.id WHERE chain.depth<50)
+    SELECT id FROM chain ORDER BY depth DESC`).bind(form.sessionId).all<{id:string}>() : null;
+  const previousForms = history ? (await Promise.all(history.results.map(row=>readQuestionnaireSession(env.DB,participant.userId,row.id)))).filter(Boolean) : [];
   let recommendation = null;
   if (session?.completed_at && key === "pregame") {
     const stored = await env.DB.prepare("SELECT recommended_subgame_id, score_json FROM recommendation_results WHERE questionnaire_session_id = ?")
@@ -128,12 +136,13 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
   }
   return noStoreResponse({
     questionnaire: {
-      id: questionnaire.id,
-      key: questionnaire.questionnaire_key,
-      questions: await getQuestions(questionnaire.id),
-      title: questionnaire.title,
-      version: questionnaire.version,
+      id: form?.id ?? questionnaire.id,
+      key: form?.key ?? questionnaire.questionnaire_key,
+      questions: form?.questions ?? await getQuestions(questionnaire.id),
+      title: form?.title ?? questionnaire.title,
+      version: form?.version ?? questionnaire.version,
     },
+    previousForms,
     completed: Boolean(session?.completed_at),
     recommendation,
     responses: session ? await getSavedResponses(session.id) : {},
@@ -157,6 +166,13 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     return noStoreResponse({ code: "QUESTIONNAIRE_NOT_FOUND" }, 404);
   }
 
+  const prior = await env.DB.prepare(`SELECT s.id FROM questionnaire_sessions s JOIN questionnaires q ON q.id=s.questionnaire_id
+    WHERE s.user_id=? AND q.questionnaire_key=? AND s.completed_at IS NULL AND s.closed_at IS NULL ORDER BY s.started_at DESC LIMIT 1`).bind(participant.userId,key).first<{id:string}>();
+  if (prior) {
+    const refreshed = await refreshActiveSession(env.DB,participant.userId,prior.id);
+    const form = await readQuestionnaireSession(env.DB,participant.userId,refreshed.sessionId);
+    if (form) return noStoreResponse({questionnaire:{id:form.id,key:form.key,questions:form.questions,title:form.title,version:form.version},responses:form.responses,sessionId:form.sessionId});
+  }
   const existing = await getActiveSession(participant.userId, questionnaire.id);
   let sessionId = existing?.id;
   let created = false;

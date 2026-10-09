@@ -12,6 +12,8 @@ import {
   type SubmissionRequirements,
 } from "../../../lib/server/submissions/requirements";
 
+import { refreshActiveSession } from "../../../lib/server/questionnaires/live-updates";
+
 export const dynamic = "force-dynamic";
 
 type RouteQuestionnaire = {
@@ -213,7 +215,13 @@ async function handlePOST(request: Request): Promise<Response> {
   if (!isSafeSubmissionSubgameId(subgameId)) return response({ code: "INVALID_SUBGAME" }, 400);
 
   const existing = await getDraft(participant.userId, subgameId);
-  if (existing) return response({ submission: existing, status: "resumed" });
+  if (existing) {
+    if (existing.status === "draft") {
+      for (const form of [existing.answerForm, existing.posttestForm]) if (form) await refreshActiveSession(env.DB, participant.userId, form.sessionId);
+      return response({ submission: await getDraft(participant.userId, subgameId), status: "resumed" });
+    }
+    return response({ submission: existing, status: "resumed" });
+  }
 
   const subgame = await env.DB.prepare(
     `SELECT subgames.id, subgames.game_id

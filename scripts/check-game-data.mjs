@@ -46,6 +46,10 @@ if (reportOnly) {
   console.log(JSON.stringify({ environment: remote ? "production" : "local", profileColumns: rows[0].map(row => row.name), counts: rows[1], submissionColumns: rows[2].map(row => row.name), questionnaireSessionColumns: rows[3].map(row => row.name), integrity: rows[4], appliedMigrations: rows[5].map(row => row.name), questionColumns: rows[6].map(row => row.name), submissionIndexes: rows[7].map(row => row.name) }, null, 2));
   process.exit(0);
 }
+if (!rows[5].some(row => row.name === "0020_live_question_updates.sql")) {
+  console.error("Apply reviewed migration 0020_live_question_updates.sql before deploying live question updates.");
+  process.exit(1);
+}
 if (!rows[0].some(column => column.name === "personal_skills_json")) {
   console.error("Missing profile migration 0014_research_profile_skills.sql. Apply reviewed D1 migrations before deploying.");
   process.exit(1);

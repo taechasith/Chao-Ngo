@@ -82,3 +82,34 @@ describe("answers survive navigation, clearing and a failed connection", () => {
     saver.dispose();
   });
 });
+
+describe("pending answers follow live instrument changes",()=>{
+  it("rebinds edits rejected by the closed old session and archives incompatible values",async()=>{
+    vi.useFakeTimers();
+    const storage=memoryStorage();
+    const send=vi.fn(async(answer:{sessionId:string})=>({ok:answer.sessionId==="new"}));
+    const saver=new AnswerAutosave({send,storage:()=>storage});
+    saver.enqueue("old","text","unsaved text");saver.enqueue("old","choice",4);
+    expect(await saver.flush("old")).toBe(false);
+    expect(await saver.rebindSession("old","new",id=>id==="text"?"new-text":undefined)).toEqual({"new-text":"unsaved text"});
+    expect(saver.historyAnswers("old")).toEqual({choice:4});
+    expect(await saver.flush("new")).toBe(true);
+    expect(new AnswerAutosave({send,storage:()=>storage}).historyAnswers("old")).toEqual({choice:4});
+    saver.dispose();
+  });
+  it("keeps newer pending values when recovering an older form after reload",async()=>{
+    vi.useFakeTimers();
+    const storage=memoryStorage();
+    const saver=new AnswerAutosave({send:async()=>({ok:false}),storage:()=>storage});
+    saver.enqueue("old","q","old edit");saver.enqueue("new","new-q","newer edit");
+    expect(await saver.rebindSession("old","new",()=>"new-q")).toEqual({"new-q":"newer edit"});
+    expect(saver.restore("new",["new-q"])).toEqual({"new-q":"newer edit"});saver.dispose();
+  });
+  it("waits for an old in-flight save, then transfers the latest failed local revision",async()=>{
+    vi.useFakeTimers();let release!:(value:{ok:boolean})=>void;
+    const send=vi.fn().mockImplementationOnce(()=>new Promise(resolve=>{release=resolve;})).mockResolvedValue({ok:false});
+    const saver=new AnswerAutosave({send});saver.enqueue("old","q","earlier");const flight=saver.flush("old");saver.enqueue("old","q","latest");
+    const rebind=saver.rebindSession("old","new",()=>"new-q");release({ok:false});await flight;
+    expect(await rebind).toEqual({"new-q":"latest"});saver.dispose();
+  });
+});
