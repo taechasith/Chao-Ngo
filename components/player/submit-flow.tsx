@@ -33,7 +33,7 @@ type QuestionForm = {
 };
 
 type UploadSummary = { bytes: number; id: string; original_name: string; status: string };
-type UploadKind = "ai_chat_pdf" | "answer_attachment";
+type UploadKind = "ai_chat_pdf";
 type SelectedFile = { bytes: number; name: string };
 
 type SubmissionRequirements = {
@@ -143,7 +143,6 @@ function choices(value: unknown): Choice[] {
 function thaiError(code: string): string {
   const messages: Record<string, string> = {
     QUESTIONNAIRE_UPDATED: "แอดมินแก้ไขคำถามแล้ว กรุณารออัปเดตและทบทวนคำตอบก่อนส่งอีกครั้ง",
-    SLIDES_REQUIRED: "กรุณาแนบสไลด์เป็นไฟล์ PDF หรือ PPTX ก่อนส่ง",
     AI_COMPANION_REQUIRED: "ต้องใช้ AI คู่คิดที่กำหนด และยืนยันการใช้งานด้านบนก่อนส่งคำตอบ",
     AI_CHAT_LINK_REQUIRED: "กรุณาใส่ลิงก์แชร์บทสนทนากับ AI ที่ขึ้นต้นด้วย https://",
     SUBMISSION_ANSWERS_INCOMPLETE: "กรุณาตอบคำถามที่จำเป็นให้ครบก่อนส่ง",
@@ -153,7 +152,7 @@ function thaiError(code: string): string {
     ANSWER_ATTACHMENT_REQUIRED: "กรุณาเลือกไฟล์คำตอบ",
     ANSWER_ATTACHMENT_SIZE_INVALID: "ไฟล์คำตอบต้องมีขนาดไม่เกินที่คดีกำหนด",
     ANSWER_ATTACHMENT_TYPE_INVALID: "ไฟล์คำตอบต้องเป็น TXT, DOCX, PDF, PPTX, PNG, JPG หรือ JPEG ที่ตรวจสอบได้",
-    ANSWER_TEXT_OR_ATTACHMENT_REQUIRED: "กรุณากรอกคำตอบในระบบให้ครบ หรือแนบไฟล์คำตอบหนึ่งรายการ",
+    ANSWER_TEXT_OR_ATTACHMENT_REQUIRED: "กรุณากรอกคำตอบในระบบให้ครบ",
     PDF_SIGNATURE_INVALID: "ไฟล์นี้ไม่ใช่ PDF ที่อ่านได้",
     PDF_SIZE_INVALID: "ไฟล์ PDF ต้องมีขนาดไม่เกิน 20 MB",
     PDF_TYPE_INVALID: "กรุณาเลือกไฟล์ PDF เท่านั้น",
@@ -167,10 +166,6 @@ function thaiError(code: string): string {
     UPLOAD_LIMIT_REACHED: "มีไฟล์ประเภทนี้แนบไว้แล้ว",
   };
   return messages[code] ?? "ดำเนินการไม่สำเร็จ ตรวจสอบข้อมูลแล้วลองอีกครั้ง";
-}
-
-function attachmentAccept(extensions: string[]): string {
-  return extensions.map((extension) => `.${extension}`).join(",");
 }
 
 function uploadName(upload: UploadSummary | SelectedFile | null | undefined): string {
@@ -451,9 +446,7 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
       };
       setSubmission((value) => {
         if (!value) return value;
-        return kind === "ai_chat_pdf"
-          ? { ...value, upload: uploaded, uploads: { ...value.uploads, aiChatPdf: uploaded } }
-          : { ...value, uploads: { ...value.uploads, answerAttachment: uploaded } };
+        return { ...value, upload: uploaded, uploads: { ...value.uploads, aiChatPdf: uploaded } };
       });
       setSelectedFiles((value) => ({
         ...value,
@@ -488,14 +481,8 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
           return;
         }
       }
-      const hasAnswerAttachment = Boolean(current.uploads.answerAttachment);
-      if (current.requirements.requiresAnswerAttachment && !hasAnswerAttachment) {
-        setMessage(thaiError("SLIDES_REQUIRED"));
-        return;
-      }
       if (
         current.requirements.requiresAnswerTextOrAttachment &&
-        (current.requirements.requiresAnswerForm || !hasAnswerAttachment) &&
         !(await completeForm(current.answerForm, current.requirements.requiredAnswerQuestionKeys))
       ) return;
       if (current.requirements.requiresPosttest && !(await completeForm(current.posttestForm))) return;
@@ -606,20 +593,15 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
   }
 
   const activeCase = caseForSubgameId(subgameId);
-  const answerAttachmentAllowed = submission.requirements.requiresAnswerTextOrAttachment &&
-    submission.requirements.allowedAnswerAttachmentExtensions.length > 0;
   const stages = [
     { href: "#submission-stage-case", label: "คดีที่กำลังส่ง" },
     ...(submission.answerForm ? [{ href: "#submission-stage-answer", label: "คำตอบ" }] : []),
-    ...(answerAttachmentAllowed ? [{ href: "#submission-stage-answer-attachment", label: submission.requirements.requiresAnswerAttachment ? "สไลด์" : "ไฟล์คำตอบ" }] : []),
     ...(submission.posttestForm && submission.requirements.requiresPosttest ? [{ href: "#submission-stage-posttest", label: "post-test" }] : []),
     ...(submission.requirements.requiresAiChatPdf ? [{ href: "#submission-stage-ai-pdf", label: "AI chat PDF" }] : []),
     { href: "#submission-stage-final", label: "ตรวจสอบและส่ง" },
   ];
-  const answerAttachment = selectedFiles.answer_attachment ?? submission.uploads.answerAttachment;
   const aiChatPdf = selectedFiles.ai_chat_pdf ?? submission.uploads.aiChatPdf;
   const finalRequiresAi = submission.requirements.requiresAiChatPdf;
-  const aiLinkQuestion = submission.answerForm?.questions.find(question => question.key === "ai_chat_link");
 
   return (
     <div className="player-content">
@@ -675,32 +657,6 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
           sectionId="submission-stage-answer"
           stage="02"
         /></fieldset>
-      ) : null}
-      {answerAttachmentAllowed ? (
-        <Panel className="player-submission-panel" data-guide="submit-answer-attachment" id="submission-stage-answer-attachment">
-          <span className="player-eyebrow">{submission.requirements.requiresAnswerAttachment ? "06 / สไลด์และบทสนทนากับ AI" : "FILE / ANSWER ATTACHMENT"}</span>
-          <h2 className="mt-2 font-display text-2xl text-white">{submission.requirements.requiresAnswerAttachment ? "แนบสไลด์สรุปคดี" : "ส่งคำตอบเป็นไฟล์"}</h2>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-white/70">{submission.requirements.requiresAnswerAttachment ? "ตอบคำถามให้ครบ แล้วแนบสไลด์เป็นไฟล์ PDF หรือ PPTX ไม่เกิน 20 MB สไลด์และ PDF บทสนทนากับ AI จะไม่เผยแพร่สาธารณะ และนำไปใช้สำหรับงานวิจัยโดยทีมที่ได้รับสิทธิ์เท่านั้น" : "เลือกส่งคำตอบที่กรอกในระบบ หรือแนบไฟล์หนึ่งรายการแทนกันได้ ไฟล์จะเก็บในพื้นที่ส่วนตัวและไม่แสดงผ่านคลังสาธารณะ"}</p>
-          {aiLinkQuestion && submission.answerForm ? <label className="mt-5 grid gap-3 text-sm text-white/85">
-            <span>{aiLinkQuestion.promptTh} <span className="text-orange-200">*</span></span>
-            <span className="text-white/65">กดแชร์บทสนทนาใน AI ที่คุณใช้ แล้วคัดลอกลิงก์มาใส่ที่นี่</span>
-            <input aria-label={aiLinkQuestion.promptTh} className="player-input" type="url" placeholder="https://…" maxLength={500}
-              disabled={submission.answerForm.completed}
-              value={typeof answers[aiLinkQuestion.id] === "string" ? String(answers[aiLinkQuestion.id]) : ""}
-              onChange={event => changeAnswer(submission.answerForm!.sessionId, aiLinkQuestion.id, event.currentTarget.value)} />
-          </label> : null}
-          <label className="player-attachment-zone mt-5 grid gap-2 text-sm text-white/80">
-            <span>{answerAttachment ? "มีไฟล์คำตอบแนบแล้ว" : `อนุญาต: ${submission.requirements.allowedAnswerAttachmentExtensions.map((extension) => extension.toUpperCase()).join(", ")}`}</span>
-            <input accept={attachmentAccept(submission.requirements.allowedAnswerAttachmentExtensions)} aria-describedby="answer-attachment-state" className="min-h-12 max-w-full border border-white/20 bg-black p-2 text-sm file:mr-3 file:min-h-9 file:border-0 file:bg-white/10 file:px-3 file:text-white" disabled={uploading || Boolean(submission.uploads.answerAttachment)} onChange={(event) => void uploadFile("answer_attachment", event.currentTarget.files?.[0])} type="file" />
-          </label>
-          <p className="mt-3 text-sm text-white/65" id="answer-attachment-state" role="status">
-            {uploading
-              ? `กำลังอัปโหลดไปยังพื้นที่ส่วนตัว${uploadProgress === null ? "" : ` ${uploadProgress}%`}`
-              : answerAttachment
-                ? `แนบแล้ว: ${uploadName(answerAttachment)} (${formatFileSize(answerAttachment.bytes)})`
-                : `ยังไม่ได้แนบไฟล์คำตอบ (ไม่เกิน ${formatFileSize(submission.requirements.maxAnswerAttachmentBytes)})`}
-          </p>
-        </Panel>
       ) : null}
       {submission.posttestForm && submission.requirements.requiresPosttest ? (
         <fieldset className="contents" disabled={live.updating}><QuestionnairePanel
@@ -759,9 +715,8 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
         <span className="player-eyebrow">FINAL / ตรวจสอบและส่ง</span>
         <h2>พร้อมยืนยันสิ่งที่คุณคิดแล้วหรือยัง?</h2>
         <p>{finalRequiresAi
-          ? submission.requirements.requiresPosttest ? "ตรวจคำตอบและ post-test ให้ครบ พร้อมแนบไฟล์ PDF บทสนทนากับ AI" : "ตรวจคำตอบทั้ง 5 ข้อ ระดับความมั่นใจ สไลด์ และ PDF บทสนทนากับ AI ให้ครบก่อนส่ง"
-          : submission.requirements.requiresAnswerForm ? "ตรวจคำตอบทั้ง 5 ข้อ ระดับความมั่นใจ ไฟล์ PDF บทสนทนากับ AI และไฟล์สไลด์ให้ครบ แล้วกดส่งคำตอบ" : "กรอกคำตอบในระบบให้ครบ หรือแนบไฟล์คำตอบหนึ่งรายการ แล้วส่งคำตอบได้ทันที"}</p>
-        {answerAttachmentAllowed ? <p className="player-upload-state" role="status">{submission.uploads.answerAttachment ? `ไฟล์คำตอบ: ${submission.uploads.answerAttachment.original_name}` : submission.requirements.requiresAnswerAttachment ? "ยังไม่ได้แนบสไลด์ (จำเป็นก่อนส่ง)" : "ยังไม่ได้แนบไฟล์คำตอบ (กรอกคำตอบในระบบแทนได้)"}</p> : null}
+          ? submission.requirements.requiresPosttest ? "ตรวจคำตอบและ post-test ให้ครบ พร้อมแนบไฟล์ PDF บทสนทนากับ AI" : "ตรวจคำตอบทั้ง 5 ข้อ ระดับความมั่นใจ และ PDF บทสนทนากับ AI ให้ครบก่อนส่ง"
+          : submission.requirements.requiresAnswerForm ? "ตรวจคำตอบและไฟล์ PDF บทสนทนากับ AI ให้ครบ แล้วกดส่งคำตอบ" : "กรอกคำตอบในระบบให้ครบ แล้วแนบไฟล์ PDF บทสนทนากับ AI ก่อนส่งคำตอบ"}</p>
         {finalRequiresAi ? <p className="player-upload-state" role="status">{submission.uploads.aiChatPdf ? `ไฟล์ AI chat PDF: ${submission.uploads.aiChatPdf.original_name}` : "ยังไม่ได้แนบไฟล์ PDF"}</p> : null}
         {!ai.aiCompanionUsed ? <p className="player-upload-state">ยังไม่ได้ยืนยันการใช้ AI คู่คิดที่กำหนด <a className="underline" href="#submission-stage-ai-required">กลับไปยืนยันด้านบน</a></p> : null}
         {message ? <p aria-live="polite" className="mt-4 text-sm text-red-200">{message}</p> : null}

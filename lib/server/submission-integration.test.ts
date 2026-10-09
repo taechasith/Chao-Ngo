@@ -138,7 +138,7 @@ describe("B6 real D1/private R2 contracts", () => {
     expect(await env.PUBLIC_ASSETS.head(key)).toBeNull();
   });
 
-  it("requires all five K.A. answers, a private AI PDF, acknowledgement and slides together", async () => {
+  it("requires all five K.A. answers and a private AI PDF without accepting slides", async () => {
     const created = await startSubmission(request("POST", { subgameId: kaSubgameId }, stranger));
     expect(created.status).toBe(201);
     const { submission: ka } = await created.json() as { submission: {
@@ -146,18 +146,20 @@ describe("B6 real D1/private R2 contracts", () => {
       answerForm: { sessionId: string; questions: { id: string; key: string; type: string; promptTh: string }[] };
     } };
     expect(ka).toMatchObject({ posttestForm: null, requirements: {
-      requiresAnswerForm: true, requiresAnswerAttachment: true, requiresAiChatLink: false,
-      requiresAiChatPdf: true, requiresPosttest: false, allowedAnswerAttachmentExtensions: ["pdf","pptx"],
+      requiresAnswerForm: true, requiresAnswerAttachment: false, requiresAiChatLink: false,
+      requiresAiChatPdf: true, requiresPosttest: false, allowedAnswerAttachmentExtensions: [],
     } });
     expect(ka.answerForm.questions).toHaveLength(5);
     expect(ka.answerForm.questions[2].promptTh).toContain("Finance");
     expect((await finalize(request("POST", undefined, stranger), context(ka.submissionId))).status).toBe(400);
-    expect((await upload(answerAttachmentRequest(), context(ka.submissionId))).status).toBe(400);
+    expect((await upload(answerAttachmentRequest(), context(ka.submissionId))).status).toBe(409);
     const slides = new FormData();
     slides.set("kind", "answer_attachment");
     slides.set("file", new File([pdf as BlobPart], "QA-slides.pdf", { type: "application/pdf" }));
-    expect((await upload(new Request("https://example.test/api/upload", { method: "POST", headers: { "x-test-user": stranger }, body: slides }), context(ka.submissionId))).status).toBe(201);
-    // An attachment no longer bypasses unanswered fields.
+    const rejectedSlides = await upload(new Request("https://example.test/api/upload", { method: "POST", headers: { "x-test-user": stranger }, body: slides }), context(ka.submissionId));
+    expect(rejectedSlides.status).toBe(409);
+    expect(await rejectedSlides.json()).toMatchObject({ code: "ANSWER_ATTACHMENT_NOT_ALLOWED" });
+    // Refusing a slide leaves every answer field mandatory.
     expect((await finalize(request("POST", undefined, stranger), context(ka.submissionId))).status).toBe(400);
     expect(ka.answerForm.questions.some(q => q.key === "ai_chat_link")).toBe(false);
     const confidence = ka.answerForm.questions.find(q => q.key === "answer_confidence")!;
@@ -189,7 +191,7 @@ describe("B6 real D1/private R2 contracts", () => {
     expect((await answer(request("PUT", { questionId: confidence.id, value: 5 }, stranger), sessionContext(ka.answerForm.sessionId))).status).toBe(409);
   });
 
-  it("uses Bio for WA VE and refuses submission without slides after completing its answers", async () => {
+  it("uses Bio for WA VE and submits its answers with only an AI PDF", async () => {
     const created = await startSubmission(request("POST", { subgameId: "subgame-ka-wa-ve" }, stranger));
     const { submission: ka } = await created.json() as { submission: { submissionId: string; answerForm: { sessionId: string; questions: { id: string; key: string; type: string; promptTh: string }[] } } };
     expect(ka.answerForm.questions[2].promptTh).toContain("Bio");
@@ -198,10 +200,7 @@ describe("B6 real D1/private R2 contracts", () => {
       expect((await answer(request("PUT", { questionId: q.id, value }, stranger), sessionContext(ka.answerForm.sessionId))).status).toBe(200);
     }
     expect((await complete(request("POST", undefined, stranger), sessionContext(ka.answerForm.sessionId))).status).toBe(200);
-    expect(await (await finalize(request("POST", undefined, stranger), context(ka.submissionId))).json()).toMatchObject({ code: "SLIDES_REQUIRED" });
-    const slides = new FormData(); slides.set("kind","answer_attachment");
-    slides.set("file", new File([pdf as BlobPart],"QA-bio-slides.pdf", { type: "application/pdf" }));
-    expect((await upload(new Request("https://example.test/api/upload", { method: "POST", headers: { "x-test-user": stranger }, body: slides }), context(ka.submissionId))).status).toBe(201);
+    expect(await (await finalize(request("POST", undefined, stranger), context(ka.submissionId))).json()).toMatchObject({ code: "AI_CHAT_PDF_REQUIRED" });
     expect((await finalize(request("POST", undefined, stranger), context(ka.submissionId))).status).toBe(400);
     expect((await acknowledge(request("POST", { acknowledged:true,consentVersion:aiChatUploadConsentVersion }, stranger), context(ka.submissionId))).status).toBe(201);
     expect((await upload(fileRequest(pdf,"application/pdf","QA-ai.pdf",stranger), context(ka.submissionId))).status).toBe(201);
@@ -399,9 +398,6 @@ describe("onboarding saves personal data and resumes without writing consent aga
     await consent(request("POST", { consentVersion, dataNoticeVersion, researchParticipation: true, aiChatUploadConsent: false }, user));
     const draft = await (await startSubmission(request("POST", { subgameId: kaSubgameId }, user))).json() as { submission: { submissionId: string; answerForm: { sessionId: string; questions: { id: string; key: string; type: string }[] } } };
     const id = draft.submission.submissionId;
-    const slides = new FormData(); slides.set("kind", "answer_attachment");
-    slides.set("file", new File([pdf as BlobPart], "QA-slides.pdf", { type: "application/pdf" }));
-    expect((await upload(new Request("https://example.test/api/upload", { method: "POST", headers: { "x-test-user": user }, body: slides }), context(id))).status).toBe(201);
     for (const q of draft.submission.answerForm.questions) {
       const value = q.type === "scale" ? 3 : q.key === "ai_chat_link" ? "https://example.test/qa-chat" : "QA overload answer";
       expect((await answer(request("PUT", { questionId: q.id, value }, user), sessionContext(draft.submission.answerForm.sessionId))).status).toBe(200);
@@ -446,8 +442,6 @@ describe("admin publication racing a player submit",()=>{
     for(const q of submission.answerForm.questions) expect((await answer(request("PUT",{questionId:q.id,value:q.type==="scale"?4:"Synthetic QA preserved answer"},user),sessionContext(submission.answerForm.sessionId))).status).toBe(200);
     await complete(request("POST",undefined,user),sessionContext(submission.answerForm.sessionId));
     await acknowledge(request("POST",{acknowledged:true,consentVersion:aiChatUploadConsentVersion},user),context(id));
-    const slides=new FormData();slides.set("kind","answer_attachment");slides.set("file",new File([pdf as BlobPart],"QA-slides.pdf",{type:"application/pdf"}));
-    await upload(new Request("https://example.test/api/upload",{method:"POST",headers:{"x-test-user":user},body:slides}),context(id));
     await upload(fileRequest(pdf,"application/pdf","QA-ai.pdf",user),context(id));
     expect((await preparation(request("PATCH", { aiCompanionUsed: true, additionalAiLinks: [] }, user), context(id))).status).toBe(200);
     const db=env.DB;let published=false;
@@ -474,5 +468,47 @@ describe("admin publication racing a player submit",()=>{
     expect((await answer(request("PUT",{questionId:submission.answerForm.questions[0].id,value:"late old edit"},user),sessionContext(submission.answerForm.sessionId))).status).toBe(409);
     expect((await complete(request("POST",undefined,user),sessionContext(resumed.submission.answerForm.sessionId))).status).toBe(200);
     expect((await finalize(request("POST",undefined,user),context(id))).status).toBe(201);
+  });
+});
+
+
+describe("AI PDF-only submissions across all cases", () => {
+  it.each([
+    "subgame-node-zone-quantum", "subgame-node-zone-space", "subgame-ka-fintech", "subgame-ka-wa-ve",
+  ])("saves answers and submits %s with one private AI PDF", async (caseId) => {
+    const user = `qa-pdf-only-${caseId}`;
+    await env.DB.prepare('INSERT INTO "user" (id,name,email,emailVerified,createdAt,updatedAt) VALUES (?,?,?,1,0,0)')
+      .bind(user, "Synthetic PDF-only QA", `${user}@example.test`).run();
+    expect((await consent(request("POST", { consentVersion, dataNoticeVersion, researchParticipation: true, aiChatUploadConsent: false }, user))).status).toBe(200);
+    const created = await startSubmission(request("POST", { subgameId: caseId }, user));
+    expect(created.status).toBe(201);
+    type Form = { sessionId: string; questions: { id: string; type: string; required: boolean; options: unknown }[] };
+    const { submission } = await created.json() as { submission: { submissionId: string; requirements: unknown; answerForm: Form; posttestForm: Form | null } };
+    const id = submission.submissionId;
+    expect(submission.requirements).toMatchObject({ requiresAnswerAttachment: false, allowedAnswerAttachmentExtensions: [], requiresAiChatPdf: true });
+    expect((await upload(answerAttachmentRequest(user), context(id))).status).toBe(409);
+    for (const form of [submission.answerForm, submission.posttestForm]) {
+      if (!form) continue;
+      for (const q of form.questions.filter(q => q.required)) {
+        const choices = Array.isArray(q.options) ? q.options as { value: string }[] : [];
+        const value = q.type === "scale" ? 3 : q.type === "single" ? choices[0].value : q.type === "multi" ? [choices[0].value] : "Synthetic QA answer preserved";
+        expect((await answer(request("PUT", { questionId: q.id, value }, user), sessionContext(form.sessionId))).status).toBe(200);
+      }
+      expect((await complete(request("POST", undefined, user), sessionContext(form.sessionId))).status).toBe(200);
+    }
+    expect((await preparation(request("PATCH", { aiCompanionUsed: true, additionalAiLinks: [] }, user), context(id))).status).toBe(200);
+    expect(await (await finalize(request("POST", undefined, user), context(id))).json()).toMatchObject({ code: "AI_CHAT_PDF_REQUIRED" });
+    expect((await acknowledge(request("POST", { acknowledged: true, consentVersion: aiChatUploadConsentVersion }, user), context(id))).status).toBe(201);
+    expect((await upload(fileRequest(pdf, "application/pdf", "QA-ai-only.pdf", user), context(id))).status).toBe(201);
+    expect((await finalize(request("POST", undefined, user), context(id))).status).toBe(201);
+    expect((await finalize(request("POST", undefined, user), context(id))).status).toBe(200);
+    const receipt = await (await getSubmission(new Request(`https://example.test/api/submissions?subgameId=${caseId}`, { headers: { "x-test-user": user } }))).json() as { submission: { status: string; answerForm: { responses: Record<string, unknown> } } };
+    expect(receipt.submission.status).toBe("submitted");
+    expect(Object.keys(receipt.submission.answerForm.responses)).toHaveLength(submission.answerForm.questions.filter(q => q.required).length);
+    const stored = await env.DB.prepare("SELECT kind, private_r2_key FROM uploads WHERE submission_id = ?").bind(id).all<{ kind: string; private_r2_key: string }>();
+    expect(stored.results).toHaveLength(1);
+    expect(stored.results[0].kind).toBe("ai_chat_pdf");
+    expect(await env.PRIVATE_UPLOADS.head(stored.results[0].private_r2_key)).not.toBeNull();
+    expect(await env.PUBLIC_ASSETS.head(stored.results[0].private_r2_key)).toBeNull();
   });
 });

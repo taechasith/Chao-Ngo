@@ -72,7 +72,7 @@ export function kaRouteForSubgameId(subgameId: string): string | null {
 }
 
 export const kaSubmissionRequirements = {
-  allowedAnswerAttachmentExtensions: ["txt", "docx", "pdf", "pptx", "png", "jpg", "jpeg"] as const,
+  allowedAnswerAttachmentExtensions: [] as const,
   requiresAiChatPdf: true,
   requiresAnswerTextOrAttachment: true,
   requiresPosttest: false,
@@ -126,7 +126,7 @@ export const kaSubmissionGuide = {
     "ปัญหาด้าน Finance (MAIMEE) หรือ Bio (WA VE) ในคดีนี้มีอะไรบ้าง",
     "นวัตกรรมที่คุณจะสร้างคืออะไร",
     "คุณมั่นใจในคำตอบของคุณมากน้อยเพียงใด (1–5)",
-    "แนบสไลด์ PDF หรือ PPTX และไฟล์ PDF บทสนทนากับ AI ที่ใช้ช่วยคิด",
+    "แนบไฟล์ PDF บทสนทนากับ AI ที่ใช้ช่วยคิด",
   ],
   title: "ภารกิจหลังจบคดี",
 } as const;

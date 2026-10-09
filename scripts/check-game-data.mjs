@@ -21,6 +21,9 @@ const queries = [
   "SELECT name FROM d1_migrations ORDER BY id",
   "PRAGMA table_info(questions)",
   "PRAGMA index_list(submissions)",
+  `SELECT COUNT(*) AS incompatible_file_policies FROM subgame_submission_requirements
+    WHERE answer_mode <> 'text' OR allowed_artifact_extensions_json <> '[]' OR requires_ai_chat_pdf <> 1
+      OR COALESCE(json_extract(requirements_json, '$.requiresAnswerAttachment'), 1) <> 0`,
 ];
 const results = [];
 for (const query of queries) {
@@ -53,6 +56,12 @@ if (!rows[5].some(row => row.name === "0020_live_question_updates.sql")) {
 if (!rows[5].some(row => row.name === "0021_submission_ai_preparation.sql") ||
     !["additional_ai_links_json", "ai_companion_confirmed_at"].every(name => rows[2].some(column => column.name === name))) {
   console.error("Apply reviewed migration 0021_submission_ai_preparation.sql before deploying AI preparation."); process.exit(1);
+}
+if (!rows[5].some(row => row.name === "0022_ai_pdf_only.sql")) {
+  console.error("Apply reviewed migration 0022_ai_pdf_only.sql before deploying the AI PDF-only file policy."); process.exit(1);
+}
+if (rows[8].some(row => row.incompatible_file_policies !== 0)) {
+  console.error("Stored submission file policies must require only an AI PDF; stop before deploying."); process.exit(1);
 }
 if (!rows[0].some(column => column.name === "personal_skills_json")) {
   console.error("Missing profile migration 0014_research_profile_skills.sql. Apply reviewed D1 migrations before deploying.");
