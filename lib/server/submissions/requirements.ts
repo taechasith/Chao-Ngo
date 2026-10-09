@@ -175,9 +175,20 @@ export async function getSubmissionRequirements(
 ): Promise<SubmissionRequirements> {
   // Revisions and receipts remain governed by their immutable instrument.
   if (answerSessionId && kaSubgameIds.has(subgameId)) {
-    const instrument = await database.prepare(`SELECT q.version FROM questionnaire_sessions s
-      JOIN questionnaires q ON q.id = s.questionnaire_id WHERE s.id = ?`).bind(answerSessionId).first<{ version: string }>();
-    if (instrument?.version === "netlood-city-submission-v1") return kaFallbackRequirements();
+    const instrument = await database.prepare(`SELECT q.id, q.version FROM questionnaire_sessions s
+      JOIN questionnaires q ON q.id = s.questionnaire_id WHERE s.id = ?`).bind(answerSessionId).first<{ id: string; version: string }>();
+    if (instrument) {
+      const questions = await database.prepare("SELECT question_key, type, required FROM questions WHERE questionnaire_id = ?").bind(instrument.id).all<{ question_key: string; type: string; required: number }>();
+      const keys = new Set(questions.results.map(q => q.question_key));
+      if (keys.has("case_truth_model")) return kaFallbackRequirements();
+      if (keys.has("case_summary")) {
+        const link = keys.has("ai_chat_link");
+        return { ...kaFallbackRequirements(), instrumentVersion: instrument.version,
+          allowedAnswerAttachmentExtensions: ["pdf", "pptx"], requiresAnswerAttachment: true,
+          requiresAnswerForm: true, requiresAiChatLink: link, requiresAiChatPdf: !link,
+          requiredAnswerQuestionKeys: questions.results.filter(q => q.required && ["short", "long"].includes(q.type)).map(q => q.question_key) };
+      }
+    }
   }
   try {
     const row = await database.prepare(

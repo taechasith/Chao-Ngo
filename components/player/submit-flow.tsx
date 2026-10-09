@@ -1,5 +1,6 @@
 "use client";
 
+import { AiCompanionNotice } from "./ai-companion-notice";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -19,6 +20,7 @@ type FormQuestion = {
 
 type QuestionForm = {
   completed: boolean;
+  version: string;
   questions: FormQuestion[];
   responses: Record<string, unknown>;
   sessionId: string;
@@ -47,6 +49,7 @@ type SubmissionPayload = {
   answerForm: QuestionForm | null;
   posttestForm: QuestionForm | null;
   previousAnswerForm?: QuestionForm | null;
+  previousAnswerForms?: QuestionForm[];
   requirements: SubmissionRequirements;
   status: string;
   submissionId: string;
@@ -135,7 +138,7 @@ function thaiError(code: string): string {
   const messages: Record<string, string> = {
     SLIDES_REQUIRED: "กรุณาแนบสไลด์เป็นไฟล์ PDF หรือ PPTX ก่อนส่ง",
     AI_CHAT_LINK_REQUIRED: "กรุณาใส่ลิงก์แชร์บทสนทนากับ AI ที่ขึ้นต้นด้วย https://",
-    SUBMISSION_ANSWERS_INCOMPLETE: "กรุณาตอบคำถามทั้ง 5 ข้อและใส่ลิงก์ AI ให้ครบก่อนส่ง",
+    SUBMISSION_ANSWERS_INCOMPLETE: "กรุณาตอบคำถามที่จำเป็นให้ครบก่อนส่ง",
     DATABASE_BUSY: "ระบบบันทึกไม่พร้อมชั่วคราว กรุณารอสักครู่แล้วลองอีกครั้ง",
     ACKNOWLEDGEMENT_REQUIRED: "กรุณายืนยันเงื่อนไขการใช้ไฟล์ PDF ก่อนอัปโหลด",
     ANSWER_ATTACHMENT_NOT_ALLOWED: "แฟ้มคดีนี้ไม่รับไฟล์แนบคำตอบ",
@@ -294,7 +297,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
       return typeof value !== "string" || !value.trim();
     });
     if (missingText) {
-      setMessage(submissionRef.current?.requirements.requiresAnswerForm ? "กรุณาตอบคำถามและใส่ลิงก์ AI ให้ครบก่อนบันทึก" : "กรุณากรอกคำตอบในระบบให้ครบ หรือเลือกส่งไฟล์คำตอบแทน");
+      setMessage(submissionRef.current?.requirements.requiresAnswerForm ? "กรุณาตอบคำถามที่จำเป็นให้ครบก่อนบันทึก" : "กรุณากรอกคำตอบในระบบให้ครบ หรือเลือกส่งไฟล์คำตอบแทน");
       return false;
     }
     if (!(await saver.flush(form.sessionId))) return false;
@@ -593,14 +596,15 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
         </div>
         <span aria-hidden="true" className="player-submission-case-mark">CASE<br />FILE</span>
       </section>
-      {submission.previousAnswerForm ? <details className="player-system-note">
-        <summary className="cursor-pointer">แบบฟอร์มปรับเป็นเวอร์ชันใหม่แล้ว · ดูคำตอบแบบร่างเดิม</summary>
-        <p className="mt-3 text-sm text-white/65">คำตอบบทสรุป หลักฐาน และนวัตกรรมเดิมถูกคัดลอกมาให้แล้ว กรุณาตรวจทานและกรอกข้อที่เพิ่มใหม่ คำตอบเดิมยังเก็บไว้ด้านล่าง</p>
-        {submission.previousAnswerForm.questions.map(question => <div className="mt-4" key={question.id}>
+      <AiCompanionNotice />
+      {(submission.previousAnswerForms ?? (submission.previousAnswerForm ? [submission.previousAnswerForm] : [])).map(form => <details className="player-system-note" key={form.sessionId}>
+        <summary className="cursor-pointer">ดูคำตอบฉบับก่อนหน้า · {form.version}</summary>
+        <p className="mt-3 text-sm text-white/65">คำตอบที่ตรงกับแบบใหม่ถูกคัดลอกมาให้แล้ว กรุณาตรวจทาน คำตอบเดิมยังเก็บไว้ด้านล่าง</p>
+        {form.questions.map(question => <div className="mt-4" key={question.id}>
           <p className="font-semibold">{question.promptTh}</p>
-          <p className="mt-2 whitespace-pre-wrap break-words text-sm text-white/70">{String(submission.previousAnswerForm?.responses[question.id] ?? "ยังไม่ได้ตอบ")}</p>
+          <p className="mt-2 whitespace-pre-wrap break-words text-sm text-white/70">{String(form.responses[question.id] ?? "ยังไม่ได้ตอบ")}</p>
         </div>)}
-      </details> : null}
+      </details>)}
       {submission.answerForm ? (
         <QuestionnairePanel
           answers={answers}
@@ -619,7 +623,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
         <Panel className="player-submission-panel" data-guide="submit-answer-attachment" id="submission-stage-answer-attachment">
           <span className="player-eyebrow">{submission.requirements.requiresAnswerAttachment ? "06 / สไลด์และบทสนทนากับ AI" : "FILE / ANSWER ATTACHMENT"}</span>
           <h2 className="mt-2 font-display text-2xl text-white">{submission.requirements.requiresAnswerAttachment ? "แนบสไลด์สรุปคดี" : "ส่งคำตอบเป็นไฟล์"}</h2>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-white/70">{submission.requirements.requiresAnswerAttachment ? "ตอบคำถามให้ครบ แล้วแนบสไลด์เป็นไฟล์ PDF หรือ PPTX ไม่เกิน 20 MB สไลด์และลิงก์บทสนทนากับ AI จะไม่เผยแพร่สาธารณะ และนำไปใช้สำหรับงานวิจัยโดยทีมที่ได้รับสิทธิ์เท่านั้น" : "เลือกส่งคำตอบที่กรอกในระบบ หรือแนบไฟล์หนึ่งรายการแทนกันได้ ไฟล์จะเก็บในพื้นที่ส่วนตัวและไม่แสดงผ่านคลังสาธารณะ"}</p>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-white/70">{submission.requirements.requiresAnswerAttachment ? "ตอบคำถามให้ครบ แล้วแนบสไลด์เป็นไฟล์ PDF หรือ PPTX ไม่เกิน 20 MB สไลด์และ PDF บทสนทนากับ AI จะไม่เผยแพร่สาธารณะ และนำไปใช้สำหรับงานวิจัยโดยทีมที่ได้รับสิทธิ์เท่านั้น" : "เลือกส่งคำตอบที่กรอกในระบบ หรือแนบไฟล์หนึ่งรายการแทนกันได้ ไฟล์จะเก็บในพื้นที่ส่วนตัวและไม่แสดงผ่านคลังสาธารณะ"}</p>
           {aiLinkQuestion && submission.answerForm ? <label className="mt-5 grid gap-3 text-sm text-white/85">
             <span>{aiLinkQuestion.promptTh} <span className="text-orange-200">*</span></span>
             <span className="text-white/65">กดแชร์บทสนทนาใน AI ที่คุณใช้ แล้วคัดลอกลิงก์มาใส่ที่นี่</span>
@@ -686,7 +690,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
         <h2>พร้อมยืนยันสิ่งที่คุณคิดแล้วหรือยัง?</h2>
         <p>{finalRequiresAi
           ? "ตรวจคำตอบและ post-test ให้ครบ พร้อมแนบไฟล์ PDF บทสนทนากับ AI"
-          : submission.requirements.requiresAnswerForm ? "ตรวจคำตอบทั้ง 5 ข้อ ระดับความมั่นใจ ลิงก์บทสนทนากับ AI และไฟล์สไลด์ให้ครบ แล้วกดส่งคำตอบ" : "กรอกคำตอบในระบบให้ครบ หรือแนบไฟล์คำตอบหนึ่งรายการ แล้วส่งคำตอบได้ทันที"}</p>
+          : submission.requirements.requiresAnswerForm ? "ตรวจคำตอบทั้ง 5 ข้อ ระดับความมั่นใจ ไฟล์ PDF บทสนทนากับ AI และไฟล์สไลด์ให้ครบ แล้วกดส่งคำตอบ" : "กรอกคำตอบในระบบให้ครบ หรือแนบไฟล์คำตอบหนึ่งรายการ แล้วส่งคำตอบได้ทันที"}</p>
         {answerAttachmentAllowed ? <p className="player-upload-state" role="status">{submission.uploads.answerAttachment ? `ไฟล์คำตอบ: ${submission.uploads.answerAttachment.original_name}` : submission.requirements.requiresAnswerAttachment ? "ยังไม่ได้แนบสไลด์ (จำเป็นก่อนส่ง)" : "ยังไม่ได้แนบไฟล์คำตอบ (กรอกคำตอบในระบบแทนได้)"}</p> : null}
         {finalRequiresAi ? <p className="player-upload-state" role="status">{submission.uploads.aiChatPdf ? `ไฟล์ AI chat PDF: ${submission.uploads.aiChatPdf.original_name}` : "ยังไม่ได้แนบไฟล์ PDF"}</p> : null}
         {message ? <p aria-live="polite" className="mt-4 text-sm text-red-200">{message}</p> : null}

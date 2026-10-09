@@ -35,10 +35,22 @@ describe("K.A. submission V2 migration preserves player history", () => {
       expect(await db.prepare("SELECT private_r2_key,status FROM uploads WHERE id = 'old-file'").first()).toEqual({ private_r2_key: "private/old.txt", status: "rejected" });
       expect(await getSubmissionRequirements(db,"subgame-ka-fintech","old-draft-ka-v2")).toMatchObject({ instrumentVersion: "ka-submission-v2", requiresAnswerForm: true, requiresAnswerAttachment: true, requiresAiChatLink: true });
       expect(await getSubmissionRequirements(db,"subgame-ka-wa-ve","old-receipt")).toMatchObject({ instrumentVersion: "netlood-city-submission-v1", requiresAnswerForm: false, requiresAnswerAttachment: false });
+      await db.prepare("INSERT INTO questionnaire_sessions (id,user_id,questionnaire_id,completed_at) VALUES ('v2-receipt','qa-history','questionnaire-submission-ka-wa-ve-v2',CURRENT_TIMESTAMP)").run();
+      await db.prepare("INSERT INTO submissions (id,user_id,subgame_id,questionnaire_session_id,status) VALUES ('v2-receipt','qa-history','subgame-ka-wa-ve','v2-receipt','submitted')").run();
+      await db.prepare(`INSERT INTO responses (id,session_id,question_id,value_json) VALUES ('v2-link','v2-receipt','question-ka-wa-ve-v2-ai_chat_link','"https://example.test/qa"')`).run();
+      const beforeV3 = await db.prepare("SELECT id,session_id,question_id,value_json FROM responses ORDER BY id").all();
+      await db.batch(unstable_splitSqlQuery(await readFile("migrations/0019_ka_ai_pdf.sql","utf8")).map(sql => db.prepare(sql)));
+      expect((await db.prepare("SELECT id,session_id,question_id,value_json FROM responses WHERE id NOT LIKE '%-ka-v3' ORDER BY id").all()).results).toEqual(beforeV3.results);
+      expect(await db.prepare("SELECT questionnaire_session_id FROM submissions WHERE id='v2-receipt'").first()).toEqual({questionnaire_session_id:"v2-receipt"});
+      expect(await getSubmissionRequirements(db,"subgame-ka-wa-ve","v2-receipt")).toMatchObject({requiresAiChatLink:true,requiresAiChatPdf:false});
+      expect(await getSubmissionRequirements(db,"subgame-ka-fintech","old-draft-ka-v2-ka-v3")).toMatchObject({requiresAiChatLink:false,requiresAiChatPdf:true,requiresAnswerAttachment:true});
+      expect((await db.prepare("SELECT question_key FROM questions WHERE questionnaire_id='questionnaire-submission-ka-maimee-v3'").all()).results).toHaveLength(5);
+      expect((await db.prepare("SELECT previous_session_id FROM submission_form_history WHERE submission_id='old-draft'").all()).results).toHaveLength(2);
       // Research deletion can still remove both retained and current sessions.
       await db.prepare("DELETE FROM submissions WHERE user_id = 'qa-history'").run();
       await db.prepare("DELETE FROM questionnaire_sessions WHERE user_id = 'qa-history'").run();
       expect(await db.prepare("SELECT COUNT(*) AS n FROM submission_form_migrations").first()).toEqual({ n: 0 });
+      expect(await db.prepare("SELECT COUNT(*) AS n FROM submission_form_history").first()).toEqual({ n: 0 });
     } finally { await mf.dispose(); }
   }, 30_000);
 });
