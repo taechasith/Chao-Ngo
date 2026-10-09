@@ -33,9 +33,9 @@ let inflight=0,peak=0,r2Slots=0;const r2Waiters=[];
 async function withR2Slot(work){if(r2Slots>=10)await new Promise(resolve=>r2Waiters.push(resolve));else r2Slots++;try{return await work();}finally{const next=r2Waiters.shift();if(next)next();else r2Slots--;}}
 async function request(user,path,method='GET',body,phaseName){
  const begin=performance.now();inflight++;peak=Math.max(peak,inflight);
- try {const r=await fetch(origin+path,{method,headers:{Origin:origin,...(user?{Cookie:user.cookie}:{}),...(body&&!(body instanceof FormData)?{'Content-Type':'application/json'}:{})},body:body instanceof FormData?body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(45000)});
+ try {const r=await fetch(origin+path,{method,headers:{Origin:origin,...(user?{Cookie:user.cookie,...(path.endsWith('/uploads')&&user.uploadPermit?{'X-Upload-Permit':user.uploadPermit}:{})}:{}),...(body&&!(body instanceof FormData)?{'Content-Type':'application/json'}:{})},body:body instanceof FormData?body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(path.endsWith('/uploads/admission')?150000:45000)});
  const raw=await r.text();const payload=(()=>{try{return JSON.parse(raw)}catch{return null}})();report.requests.push({phase:phaseName||report.phase,user:user?.id,path:path.replace(/[a-f0-9-]{36}/g,':id'),status:r.status,ms:Math.round(performance.now()-begin),code:payload?.code,...([404,500].includes(r.status)?{diagnostic:raw.slice(0,220),contentType:r.headers.get('content-type')}: {})});return {status:r.status,body:payload};}
- catch(e){report.requests.push({phase:phaseName||report.phase,user:user?.id,status:'network-error',ms:Math.round(performance.now()-begin),error:e.name});throw new Error(e.name,{cause:e});}
+ catch(e){report.requests.push({phase:phaseName||report.phase,user:user?.id,status:'network-error',ms:Math.round(performance.now()-begin),error:e.name,diagnostic:String(e.cause?.code??e.cause?.message??e.message).slice(0,200)});throw new Error(e.name,{cause:e});}
  finally{inflight--;}
 }
 function check(value,expected,label){if(value!==expected)throw new Error(`${label}: expected ${expected}, got ${value}`);}
@@ -65,12 +65,13 @@ try{
  cli(['secret','put','BETTER_AUTH_SECRET','--config','dist/server/wrangler.qa.json'],secret+'\n');createdWorker=true;
  await new Promise(r=>setTimeout(r,10000));
  for(let attempt=0;;attempt++){try{cli(['deploy','--config','dist/server/wrangler.qa.json']);break;}catch(error){if(attempt>=2||!error.cause?.message.includes("Cannot read properties of null (reading 'tag')"))throw error;report.setupDeployRetries=(report.setupDeployRetries||0)+1;await new Promise(r=>setTimeout(r,10000));}}
+ report.qaSubdomain=await cf(`/accounts/${account}/workers/scripts/${name}/subdomain`,'POST',{enabled:true,previews_enabled:false});
  tailProcess=spawn(process.execPath,['node_modules/wrangler/bin/wrangler.js','tail','--format','json','--config','dist/server/wrangler.qa.json'],{env:process.env,stdio:['ignore','pipe','ignore']});
  let tailBuffer='',tailJson='';report.tailEvents=0;
  const captureTail=event=>{report.tailEvents++;report.tailOutcomes[event.outcome]=(report.tailOutcomes[event.outcome]||0)+1;for(const ex of event.exceptions||[]){if(report.cloudflareExceptions.length<30)report.cloudflareExceptions.push({name:ex.name,message:String(ex.message).slice(0,1000)});}for(const log of event.logs||[]){const msg=(log.message||[]).join(' ');if(/D1(?:_| transient| queue| connection)|SQLITE|overload|queue|exceeded|Error/i.test(msg)&&report.cloudflareWarnings.length<30)report.cloudflareWarnings.push({name:log.level,message:msg.slice(0,1000)});}};
  tailProcess.stdout.on('data',chunk=>{tailBuffer+=chunk.toString();let pos;while((pos=tailBuffer.indexOf('\n'))>=0){const line=tailBuffer.slice(0,pos);tailBuffer=tailBuffer.slice(pos+1);if(line==='{'||tailJson){tailJson+=line+'\n';if(line==='}'){try{captureTail(JSON.parse(tailJson));}catch{/* Ignore incomplete tail frames. */}tailJson='';}}else{try{captureTail(JSON.parse(line));}catch{/* Ignore incomplete tail frames. */}}}});
  // Allow the new worker to become available; bounded readiness, not counted as load.
- for(let i=0;i<12;i++){const r=await request(null,'/api/submissions');if(r.status===401)break;if(i===11)throw new Error('QA endpoint not ready');await new Promise(r=>setTimeout(r,2000));}
+ for(let i=0;i<60;i++){const r=await request(null,'/api/submissions');if(r.status===401)break;if(i===59)throw new Error('QA endpoint not ready');await new Promise(r=>setTimeout(r,2000));}
  // Record a 30-second propagation/warm-up window before measured traffic. No measured failure is retried.
  report.phase='deployment propagation warmup';
  for(let round=0;round<6;round++){await Promise.all(Array.from({length:5},()=>request(null,'/api/submissions')));await new Promise(r=>setTimeout(r,5000));}
@@ -85,7 +86,7 @@ try{
  });
  await phase('300 concurrent start/resume draft',users,async u=>{const r=await request(u,'/api/submissions','POST',{subgameId:u.subgameId});check(r.status,201,'start');u.draft=r.body.submission;});
  report.distribution=Object.fromEntries([...new Set(users.map(u=>u.subgameId))].map(id=>[id,users.filter(u=>u.subgameId===id).length]));
- report.phase='ownership guard';check((await request(users[1],`/api/submissions/${users[0].draft.submissionId}/finalize`,'POST')).status,404,'foreign owner');delete report.phase;
+ report.phase='ownership guard';check((await request(users[1],`/api/submissions/${users[0].draft.submissionId}/finalize`,'POST')).status,404,'foreign owner');check((await request(users[1],`/api/submissions/${users[0].draft.submissionId}/uploads/admission`,'POST',{bytes:2097152})).status,404,'foreign upload preflight');check((await request(users[0],`/api/submissions/${users[0].draft.submissionId}/uploads/admission`,'POST',{bytes:2097152})).status,403,'preflight requires acknowledgement');delete report.phase;
  report.polling={intervalMs:6000,requests:0,errors:0};
  polling=Promise.all(users.map(async u=>{while(!stopPolling){
   try{const r=await request(u,'/api/questionnaires/revisions','GET',undefined,'background revision polling');report.polling.requests++;if(r.status!==200)report.polling.errors++;}
@@ -169,8 +170,16 @@ try{
  }}
  report.fileSizes=Object.fromEntries(['ai_chat_pdf'].map(kind=>[kind,users.flatMap(u=>u.files).filter(f=>f.kind===kind).reduce((counts,f)=>({...counts,[f.bytes]:(counts[f.bytes]||0)+1}),{})]));
  for(const kind of ['ai_chat_pdf'])await phase(`${kind} simultaneous PDF uploads with revision polling`,users.filter(u=>u.files.some(f=>f.kind===kind)),async u=>{
-  const file=u.files.find(f=>f.kind===kind);const form=new FormData();form.set('kind',kind);form.set('file',new File([await openAsBlob(file.path,{type:'application/pdf'})],`${u.id}-${kind}.pdf`,{type:'application/pdf'}));
+  const file=u.files.find(f=>f.kind===kind);
+  const permission=await request(u,`/api/submissions/${u.draft.submissionId}/uploads/admission`,'POST',{bytes:file.bytes});check(permission.status,200,'upload admission');u.uploadPermit=permission.body.permit;
+  if(!u.uploadPermit)throw new Error('Missing server upload permit');
+  const form=new FormData();form.set('kind',kind);form.set('file',new File([await openAsBlob(file.path,{type:'application/pdf'})],`${u.id}-${kind}.pdf`,{type:'application/pdf'}));
+  if(u===users[0]){const guard=new FormData();guard.set('file',new File([Buffer.from('%PDF-1.7\n%%EOF\n')],'guard.pdf',{type:'application/pdf'}));
+   check((await request(u,`/api/submissions/${users[1].draft.submissionId}/uploads`,'POST',guard)).status,409,'permit cannot change case');
+   check((await request({...u,uploadPermit:undefined},`/api/submissions/${u.draft.submissionId}/uploads`,'POST',guard)).status,428,'large body requires preflight');
+  }
   const r=await request(u,`/api/submissions/${u.draft.submissionId}/uploads`,'POST',form);check(r.status,201,`upload ${kind} (${r.body?.code})`);file.uploadId=r.body.upload.id;
+  if(u===users[0]){const replay=new FormData();replay.set('file',new File([Buffer.from('%PDF-1.7\n%%EOF\n')],'guard.pdf',{type:'application/pdf'}));check((await request(u,`/api/submissions/${u.draft.submissionId}/uploads`,'POST',replay)).status,409,'permit is single use');}
  });
  await phase('300 concurrent finalizations and receipt ownership checks',users,async u=>{
   check((await request(u,`/api/submissions/${u.draft.submissionId}/finalize`,'POST')).status,201,'finalize');const draft=await readDraft(u);check(draft.status,'submitted','receipt status');verifyAnswers(u,draft);check(draft.preparation.aiCompanionUsed,true,'receipt confirmation');check(JSON.stringify(draft.preparation.additionalAiLinks),JSON.stringify(u.aiLinks),'receipt private links');

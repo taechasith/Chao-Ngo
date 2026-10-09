@@ -73,3 +73,7 @@ export function uploadAdmissionCost(request: Request): number {
     ? Math.min(databaseRequestCapacity, Math.max(1, Math.ceil(bytes / (2 * 1024 * 1024))))
     : databaseRequestCapacity;
 }
+
+export function isUploadAdmissionRequest(request: Request): boolean {
+  return request.method === "POST" && /^\/api\/submissions\/[^/]+\/uploads\/admission\/?$/.test(new URL(request.url).pathname);
+}

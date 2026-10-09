@@ -11,6 +11,7 @@ import { isWithinPlayerMutationLimit } from "./request-limits";
 import { GET as getSubmission, POST as startSubmission } from "../../app/api/submissions/route";
 import { POST as consent } from "../../app/api/research-consent/route";
 import { POST as acknowledge, DELETE as revokeAcknowledgement } from "../../app/api/submissions/[submissionId]/acknowledgement/route";
+import { POST as uploadAdmission } from "../../app/api/submissions/[submissionId]/uploads/admission/route";
 import { POST as upload } from "../../app/api/submissions/[submissionId]/uploads/route";
 import { POST as revise } from "../../app/api/submissions/[submissionId]/revise/route";
 import { PATCH as preparation } from "../../app/api/submissions/[submissionId]/preparation/route";
@@ -121,10 +122,21 @@ describe("B6 real D1/private R2 contracts", () => {
     expect((await preparation(request("PATCH", { aiCompanionUsed: false, additionalAiLinks: [] }), context(id))).status).toBe(200);
   });
 
+  it("checks ownership, acknowledgement and bounded size before issuing an upload slot", async () => {
+    expect((await uploadAdmission(request("POST", { bytes: pdf.length }, null), context(id))).status).toBe(401);
+    expect((await uploadAdmission(request("POST", { bytes: pdf.length }, owner, "https://evil.test"), context(id))).status).toBe(403);
+    expect((await uploadAdmission(request("POST", { bytes: pdf.length }, stranger), context(id))).status).toBe(404);
+    for (const bytes of [0, -1, 12.5, 21 * 1024 * 1024]) {
+      expect((await uploadAdmission(request("POST", { bytes }), context(id))).status).toBe(400);
+    }
+    expect((await uploadAdmission(request("POST", { bytes: pdf.length }), context(id))).status).toBe(403);
+  });
+
   it("validates current PDF acknowledgement, MIME, signature, and limits", async () => {
     expect((await upload(fileRequest(), context(id))).status).toBe(403);
     expect((await acknowledge(request("POST", { acknowledged: true, consentVersion: "old" }), context(id))).status).toBe(400);
     expect((await acknowledge(request("POST", { acknowledged: true, consentVersion: aiChatUploadConsentVersion }), context(id))).status).toBe(201);
+    expect(await (await uploadAdmission(request("POST", { bytes: pdf.length }), context(id))).json()).toMatchObject({ admission: { bytes: pdf.length, submissionId: id, userId: owner } });
     expect((await upload(fileRequest(pdf, "text/html"), context(id))).status).toBe(400);
     expect((await upload(fileRequest(pdf, "application/pdf", "chat.html"), context(id))).status).toBe(400);
     expect((await upload(fileRequest(new TextEncoder().encode("not a real PDF document")), context(id))).status).toBe(400);

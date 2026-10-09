@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { AdmissionBusyError, isFinalizationRequest, RequestAdmission, needsDatabaseAdmission, isSubmissionUpload, uploadAdmissionCost } from "./request-admission";
+import { AdmissionBusyError, isFinalizationRequest, RequestAdmission, needsDatabaseAdmission, isSubmissionUpload, isUploadAdmissionRequest, uploadAdmissionCost } from "./request-admission";
 
 describe("global finalization admission", () => {
   it("runs 300 callers in order with at most 20 active and preserves each result", async () => {
@@ -54,6 +54,8 @@ describe("whole-game D1 admission", () => {
     expect(needsDatabaseAdmission(new Request("https://example.test/assets/app.js"))).toBe(false);
     const upload = new Request("https://example.test/api/submissions/id/uploads", { method:"POST", headers:{"Content-Length":String(20*1024*1024+2000)} });
     expect(isSubmissionUpload(upload)).toBe(true);
+    expect(isUploadAdmissionRequest(new Request(upload.url + "/admission", { method: "POST" }))).toBe(true);
+    expect(isSubmissionUpload(new Request(upload.url + "/admission", { method: "POST" }))).toBe(false);
     expect(uploadAdmissionCost(upload)).toBe(11);
     expect(uploadAdmissionCost(new Request(upload.url,{method:"POST"}))).toBe(12);
   });

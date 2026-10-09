@@ -162,6 +162,9 @@ function thaiError(code: string): string {
     REQUEST_RATE_LIMITED: "คุณลองดำเนินการหลายครั้งเกินไป กรุณารอสักครู่แล้วลองใหม่",
     SUBMISSION_CHANGED: "สถานะการส่งคำตอบเปลี่ยนไป กรุณารีเฟรชหน้าแล้วลองใหม่",
     UNAUTHENTICATED: "เข้าสู่ระบบก่อนส่งคำตอบ",
+    UPLOAD_ADMISSION_REQUIRED: "หน้าเว็บมีการอัปเดต กรุณาโหลดหน้าใหม่แล้วส่งไฟล์อีกครั้ง",
+    UPLOAD_ADMISSION_EXPIRED: "คิวอัปโหลดหมดเวลา กรุณาลองเลือกไฟล์อีกครั้ง",
+    UPLOAD_LENGTH_INVALID: "ขนาดไฟล์เปลี่ยนหรืออ่านไม่ได้ กรุณาเลือกไฟล์ PDF อีกครั้ง",
     UPLOAD_KIND_INVALID: "ชนิดไฟล์ที่ส่งไม่ถูกต้อง",
     UPLOAD_LIMIT_REACHED: "มีไฟล์ประเภทนี้แนบไว้แล้ว",
   };
@@ -406,15 +409,23 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
     }
     setSelectedFiles((value) => ({ ...value, [kind]: { bytes: file.size, name: file.name } }));
     setUploading(true);
-    setUploadProgress(0);
-    setMessage("");
+    setUploadProgress(null);
+    setMessage("กำลังรอคิวอัปโหลด ไฟล์ยังอยู่ในเครื่องของคุณ");
     const form = new FormData();
     form.set("file", file);
     form.set("kind", kind);
     try {
+      const preflight = await fetch(`/api/submissions/${current.submissionId}/uploads/admission`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bytes: file.size }),
+      });
+      const permission = await preflight.json() as { permit?: string; code?: string };
+      if (!preflight.ok) { setSelectedFiles((value) => { const next = { ...value }; delete next[kind]; return next; }); setMessage(thaiError(permission.code ?? "")); return; }
+      setMessage("");
+      setUploadProgress(0);
       const result = await new Promise<{ body: UploadResponse; ok: boolean }>((resolve, reject) => {
         const request = new XMLHttpRequest();
         request.open("POST", `/api/submissions/${current.submissionId}/uploads`);
+        if (permission.permit) request.setRequestHeader("X-Upload-Permit", permission.permit);
         request.responseType = "json";
         request.withCredentials = true;
         request.upload.addEventListener("progress", (event) => {

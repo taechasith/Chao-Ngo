@@ -31,11 +31,16 @@ function uploadKindFromForm(form: FormData): UploadKind | null {
   return rawKind === "ai_chat_pdf" || rawKind === "answer_attachment" ? rawKind : null;
 }
 
-async function digestHex(bytes: Uint8Array): Promise<string> {
-  const copied = new Uint8Array(bytes.byteLength);
-  copied.set(bytes);
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", copied));
+async function digestHex(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
   return Array.from(digest, (value) => value.toString(16).padStart(2, "0")).join("");
+}
+
+async function uploadForm(request: Request): Promise<FormData | null> {
+  const body = await readBoundedBody(request, maximumPrivateUploadBytes + multipartOverheadBytes);
+  if (!body) return null;
+  return new Response(body as BodyInit, { headers: { "Content-Type": request.headers.get("content-type") ?? "" } })
+    .formData().catch(() => null);
 }
 
 async function handlePOST(request: Request, context: RouteContext): Promise<Response> {
@@ -53,11 +58,7 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (contentLength > maximumPrivateUploadBytes + multipartOverheadBytes) return response({ code: "PDF_SIZE_INVALID" }, 413);
 
-  const body = await readBoundedBody(request, maximumPrivateUploadBytes + multipartOverheadBytes);
-  if (!body) return response({ code: "PDF_SIZE_INVALID" }, 413);
-  const form = await new Response(body as BodyInit, {
-    headers: { "Content-Type": request.headers.get("content-type") ?? "" },
-  }).formData().catch(() => null);
+  const form = await uploadForm(request);
   if (!form) return response({ code: "UPLOAD_FORM_INVALID" }, 400);
 
   const kind = uploadKindFromForm(form);
