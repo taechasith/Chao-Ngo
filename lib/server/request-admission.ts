@@ -51,7 +51,8 @@ export class RequestAdmission {
   }
 }
 
-export const databaseRequestCapacity = 12;
+export const databaseRequestCapacity = 20;
+export const uploadMemoryCapacity = 12;
 
 export function isFinalizationRequest(request: Request): boolean {
   return request.method === "POST" && /^\/api\/submissions\/[^/]+\/finalize\/?$/.test(new URL(request.url).pathname);
@@ -70,8 +71,8 @@ export function needsDatabaseAdmission(request: Request): boolean {
 export function uploadAdmissionCost(request: Request): number {
   const bytes = Number(request.headers.get("Content-Length"));
   return Number.isSafeInteger(bytes) && bytes > 0
-    ? Math.min(databaseRequestCapacity, Math.max(1, Math.ceil(bytes / (2 * 1024 * 1024))))
-    : databaseRequestCapacity;
+    ? Math.min(uploadMemoryCapacity, Math.max(1, Math.ceil(bytes / (2 * 1024 * 1024))))
+    : uploadMemoryCapacity;
 }
 
 export function isUploadAdmissionRequest(request: Request): boolean {
