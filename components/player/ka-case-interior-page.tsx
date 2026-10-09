@@ -89,7 +89,7 @@ export async function KaCaseInteriorPage({
         </div>
 
         <DecisionPanel guideTarget="ka-submit" action={<InvestigativeAction href={`/submit?subgameId=${subgame.id}`}>เปิดภารกิจส่งคำตอบ</InvestigativeAction>} eyebrow="SUBMISSION / NETLOOD CITY" title={kaSubmissionGuide.title}>
-          <p>ตอบคำถามทั้ง 5 ข้อ แล้วแนบสไลด์และไฟล์ PDF บทสนทนากับ AI ที่ใช้ช่วยคิด ข้อมูลที่ส่งจะไม่เผยแพร่สาธารณะ และใช้สำหรับงานวิจัย</p>
+          <p>ตอบคำถามทั้ง 5 ข้อ แล้วแนบไฟล์ PDF บทสนทนากับ AI ที่ใช้ช่วยคิด ข้อมูลที่ส่งจะไม่เผยแพร่สาธารณะ และใช้สำหรับงานวิจัย</p>
           <ul className="interior-thinking-list">
             {kaSubmissionGuide.steps.map((item, index) => <li key={item}><span>{String(index + 1).padStart(2, "0")}</span><div><p>{item}</p></div></li>)}
           </ul>

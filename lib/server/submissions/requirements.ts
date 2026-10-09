@@ -168,12 +168,12 @@ function isMissingRequirementsTable(error: unknown): boolean {
  * proposal by selecting the row wholesale, rather than binding the client to a
  * particular column spelling. A missing row uses the conservative per-subgame fallback.
  */
-export async function getSubmissionRequirements(
+async function readSubmissionRequirements(
   database: D1Database,
   subgameId: string,
   answerSessionId?: string | null,
 ): Promise<SubmissionRequirements> {
-  // Revisions and receipts remain governed by their immutable instrument.
+  // Answer fields remain governed by their immutable instrument; file policy is applied below.
   if (answerSessionId && kaSubgameIds.has(subgameId)) {
     const instrument = await database.prepare(`SELECT q.id, q.version FROM questionnaire_sessions s
       JOIN questionnaires q ON q.id = s.questionnaire_id WHERE s.id = ?`).bind(answerSessionId).first<{ id: string; version: string }>();
@@ -201,19 +201,36 @@ export async function getSubmissionRequirements(
   }
 }
 
+/** Every case accepts only an AI conversation PDF; historical uploads remain readable. */
+function aiPdfOnly(requirements: SubmissionRequirements): SubmissionRequirements {
+  return {
+    ...requirements,
+    allowedAnswerAttachmentExtensions: [],
+    requiresAnswerAttachment: false,
+    requiresAnswerForm: requirements.requiresAnswerTextOrAttachment,
+    requiresAiChatLink: false,
+    requiresAiChatPdf: true,
+    requiredAnswerQuestionKeys: requirements.requiredAnswerQuestionKeys.filter(key => key !== "ai_chat_link"),
+  };
+}
+
+export async function getSubmissionRequirements(database: D1Database, subgameId: string, answerSessionId?: string | null): Promise<SubmissionRequirements> {
+  return aiPdfOnly(await readSubmissionRequirements(database, subgameId, answerSessionId));
+}
+
 /** Read requirements once for a completion calculation, with bound subgame IDs. */
 export async function getSubmissionRequirementsForSubgames(
   database: D1Database,
   subgameIds: string[],
 ): Promise<Map<string, SubmissionRequirements>> {
   const ids = [...new Set(subgameIds)];
-  const requirements = new Map(ids.map(id => [id, fallbackSubmissionRequirements(id)]));
+  const requirements = new Map(ids.map(id => [id, aiPdfOnly(fallbackSubmissionRequirements(id))]));
   if (!ids.length) return requirements;
   try {
     const rows = await database.prepare(
       `SELECT * FROM subgame_submission_requirements WHERE subgame_id IN (${ids.map(() => "?").join(",")})`,
     ).bind(...ids).all<RequirementRow & { subgame_id: string }>();
-    for (const row of rows.results) requirements.set(row.subgame_id, requirementsFromRow(row.subgame_id, row));
+    for (const row of rows.results) requirements.set(row.subgame_id, aiPdfOnly(requirementsFromRow(row.subgame_id, row)));
   } catch (error) {
     if (!isMissingRequirementsTable(error)) throw error;
   }
