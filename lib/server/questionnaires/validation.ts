@@ -92,7 +92,11 @@ export function validateQuestionValue(
 
   if (question.type === "short") {
     const value = validateText(input, 500);
-    return value === null ? { success: false } : { success: true, value };
+    if (value === null) return { success: false };
+    let options: { format?: string };
+    try { options = JSON.parse(question.optionsJson) as { format?: string }; } catch { return { success: false }; }
+    if (options?.format === "https-url" && !isHttpsShareUrl(value)) return { success: false };
+    return { success: true, value };
   }
 
   if (question.type === "long") {
@@ -153,4 +157,14 @@ export function validateQuestionValue(
   }
 
   return { success: false };
+}
+
+/** Validate without fetching the conversation or restricting the chosen AI provider. */
+export function isHttpsShareUrl(value: unknown): value is string {
+  if (typeof value !== "string" || value.trim().length > 500) return false;
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "https:" && !url.username && !url.password && url.hostname.includes(".")
+      && !/^(localhost|127\.|0\.|\[)/i.test(url.hostname) && !url.hostname.endsWith(".localhost");
+  } catch { return false; }
 }

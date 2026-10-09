@@ -92,8 +92,8 @@ export function KaCasefilesOverview({ cases, unavailable }: { cases: PlayerCase[
       <section className="player-ai-strip" data-player-reveal="primary">
         <div>
           <span className="player-eyebrow">SUBMISSION / ส่งคำอธิบาย</span>
-          <h2>ส่งคำอธิบายของคุณเป็นข้อความหรือไฟล์หนึ่งชิ้น</h2>
-          <p>ทั้งสองคดีใช้เกณฑ์ NetLood City เดียวกัน: เหตุและไทม์ไลน์ หลักฐาน ความไม่แน่นอน และระบบป้องกันที่คำนึงถึงคน</p>
+          <h2>สรุปคดี พร้อมส่งสไลด์และลิงก์ AI</h2>
+          <p>ตอบ 5 คำถามเกี่ยวกับบทสรุป เหตุผล ปัญหาด้าน Finance หรือ Bio นวัตกรรม และความมั่นใจ แล้วแนบสไลด์กับลิงก์บทสนทนา AI สำหรับงานวิจัย</p>
         </div>
         <Link className="player-button" href="/play">กลับไปเลือกแฟ้มอื่น</Link>
       </section>

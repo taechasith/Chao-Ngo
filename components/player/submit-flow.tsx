@@ -35,6 +35,9 @@ type SubmissionRequirements = {
   maxAnswerAttachmentBytes: number;
   requiredAnswerQuestionKeys: string[];
   requiresAiChatPdf: boolean;
+  requiresAnswerAttachment: boolean;
+  requiresAnswerForm: boolean;
+  requiresAiChatLink: boolean;
   requiresAnswerTextOrAttachment: boolean;
   requiresPosttest: boolean;
 };
@@ -43,6 +46,7 @@ type SubmissionPayload = {
   acknowledgement: { acknowledged_at: string } | null;
   answerForm: QuestionForm | null;
   posttestForm: QuestionForm | null;
+  previousAnswerForm?: QuestionForm | null;
   requirements: SubmissionRequirements;
   status: string;
   submissionId: string;
@@ -129,6 +133,9 @@ function choices(value: unknown): Choice[] {
 
 function thaiError(code: string): string {
   const messages: Record<string, string> = {
+    SLIDES_REQUIRED: "กรุณาแนบสไลด์เป็นไฟล์ PDF หรือ PPTX ก่อนส่ง",
+    AI_CHAT_LINK_REQUIRED: "กรุณาใส่ลิงก์แชร์บทสนทนากับ AI ที่ขึ้นต้นด้วย https://",
+    SUBMISSION_ANSWERS_INCOMPLETE: "กรุณาตอบคำถามทั้ง 5 ข้อและใส่ลิงก์ AI ให้ครบก่อนส่ง",
     DATABASE_BUSY: "ระบบบันทึกไม่พร้อมชั่วคราว กรุณารอสักครู่แล้วลองอีกครั้ง",
     ACKNOWLEDGEMENT_REQUIRED: "กรุณายืนยันเงื่อนไขการใช้ไฟล์ PDF ก่อนอัปโหลด",
     ANSWER_ATTACHMENT_NOT_ALLOWED: "แฟ้มคดีนี้ไม่รับไฟล์แนบคำตอบ",
@@ -287,7 +294,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
       return typeof value !== "string" || !value.trim();
     });
     if (missingText) {
-      setMessage("กรุณากรอกคำตอบในระบบให้ครบ หรือเลือกส่งไฟล์คำตอบแทน");
+      setMessage(submissionRef.current?.requirements.requiresAnswerForm ? "กรุณาตอบคำถามและใส่ลิงก์ AI ให้ครบก่อนบันทึก" : "กรุณากรอกคำตอบในระบบให้ครบ หรือเลือกส่งไฟล์คำตอบแทน");
       return false;
     }
     if (!(await saver.flush(form.sessionId))) return false;
@@ -312,6 +319,10 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
       return false;
     }
     completedSessions.current.add(form.sessionId);
+    setSubmission(current => current ? { ...current,
+      answerForm: current.answerForm?.sessionId === form.sessionId ? { ...current.answerForm, completed: true } : current.answerForm,
+      posttestForm: current.posttestForm?.sessionId === form.sessionId ? { ...current.posttestForm, completed: true } : current.posttestForm,
+    } : current);
     saver.forget(form.sessionId);
     return true;
   }
@@ -429,9 +440,13 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
         }
       }
       const hasAnswerAttachment = Boolean(current.uploads.answerAttachment);
+      if (current.requirements.requiresAnswerAttachment && !hasAnswerAttachment) {
+        setMessage(thaiError("SLIDES_REQUIRED"));
+        return;
+      }
       if (
         current.requirements.requiresAnswerTextOrAttachment &&
-        !hasAnswerAttachment &&
+        (current.requirements.requiresAnswerForm || !hasAnswerAttachment) &&
         !(await completeForm(current.answerForm, current.requirements.requiredAnswerQuestionKeys))
       ) return;
       if (current.requirements.requiresPosttest && !(await completeForm(current.posttestForm))) return;
@@ -546,7 +561,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
   const stages = [
     { href: "#submission-stage-case", label: "คดีที่กำลังส่ง" },
     ...(submission.answerForm ? [{ href: "#submission-stage-answer", label: "คำตอบ" }] : []),
-    ...(answerAttachmentAllowed ? [{ href: "#submission-stage-answer-attachment", label: "ไฟล์คำตอบ" }] : []),
+    ...(answerAttachmentAllowed ? [{ href: "#submission-stage-answer-attachment", label: submission.requirements.requiresAnswerAttachment ? "สไลด์" : "ไฟล์คำตอบ" }] : []),
     ...(submission.posttestForm && submission.requirements.requiresPosttest ? [{ href: "#submission-stage-posttest", label: "post-test" }] : []),
     ...(submission.requirements.requiresAiChatPdf ? [{ href: "#submission-stage-ai-pdf", label: "AI chat PDF" }] : []),
     { href: "#submission-stage-final", label: "ตรวจสอบและส่ง" },
@@ -554,6 +569,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
   const answerAttachment = selectedFiles.answer_attachment ?? submission.uploads.answerAttachment;
   const aiChatPdf = selectedFiles.ai_chat_pdf ?? submission.uploads.aiChatPdf;
   const finalRequiresAi = submission.requirements.requiresAiChatPdf;
+  const aiLinkQuestion = submission.answerForm?.questions.find(question => question.key === "ai_chat_link");
 
   return (
     <div className="player-content">
@@ -577,6 +593,14 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
         </div>
         <span aria-hidden="true" className="player-submission-case-mark">CASE<br />FILE</span>
       </section>
+      {submission.previousAnswerForm ? <details className="player-system-note">
+        <summary className="cursor-pointer">แบบฟอร์มปรับเป็นเวอร์ชันใหม่แล้ว · ดูคำตอบแบบร่างเดิม</summary>
+        <p className="mt-3 text-sm text-white/65">คำตอบบทสรุป หลักฐาน และนวัตกรรมเดิมถูกคัดลอกมาให้แล้ว กรุณาตรวจทานและกรอกข้อที่เพิ่มใหม่ คำตอบเดิมยังเก็บไว้ด้านล่าง</p>
+        {submission.previousAnswerForm.questions.map(question => <div className="mt-4" key={question.id}>
+          <p className="font-semibold">{question.promptTh}</p>
+          <p className="mt-2 whitespace-pre-wrap break-words text-sm text-white/70">{String(submission.previousAnswerForm?.responses[question.id] ?? "ยังไม่ได้ตอบ")}</p>
+        </div>)}
+      </details> : null}
       {submission.answerForm ? (
         <QuestionnairePanel
           answers={answers}
@@ -593,9 +617,17 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
       ) : null}
       {answerAttachmentAllowed ? (
         <Panel className="player-submission-panel" data-guide="submit-answer-attachment" id="submission-stage-answer-attachment">
-          <span className="player-eyebrow">FILE / ANSWER ATTACHMENT</span>
-          <h2 className="mt-2 font-display text-2xl text-white">ส่งคำตอบเป็นไฟล์</h2>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-white/70">เลือกส่งคำตอบที่กรอกในระบบ หรือแนบไฟล์หนึ่งรายการแทนกันได้ ไฟล์จะเก็บในพื้นที่ส่วนตัวและไม่แสดงผ่านคลังสาธารณะ</p>
+          <span className="player-eyebrow">{submission.requirements.requiresAnswerAttachment ? "06 / สไลด์และบทสนทนากับ AI" : "FILE / ANSWER ATTACHMENT"}</span>
+          <h2 className="mt-2 font-display text-2xl text-white">{submission.requirements.requiresAnswerAttachment ? "แนบสไลด์สรุปคดี" : "ส่งคำตอบเป็นไฟล์"}</h2>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-white/70">{submission.requirements.requiresAnswerAttachment ? "ตอบคำถามให้ครบ แล้วแนบสไลด์เป็นไฟล์ PDF หรือ PPTX ไม่เกิน 20 MB สไลด์และลิงก์บทสนทนากับ AI จะไม่เผยแพร่สาธารณะ และนำไปใช้สำหรับงานวิจัยโดยทีมที่ได้รับสิทธิ์เท่านั้น" : "เลือกส่งคำตอบที่กรอกในระบบ หรือแนบไฟล์หนึ่งรายการแทนกันได้ ไฟล์จะเก็บในพื้นที่ส่วนตัวและไม่แสดงผ่านคลังสาธารณะ"}</p>
+          {aiLinkQuestion && submission.answerForm ? <label className="mt-5 grid gap-3 text-sm text-white/85">
+            <span>{aiLinkQuestion.promptTh} <span className="text-orange-200">*</span></span>
+            <span className="text-white/65">กดแชร์บทสนทนาใน AI ที่คุณใช้ แล้วคัดลอกลิงก์มาใส่ที่นี่</span>
+            <input aria-label={aiLinkQuestion.promptTh} className="player-input" type="url" placeholder="https://…" maxLength={500}
+              disabled={submission.answerForm.completed}
+              value={typeof answers[aiLinkQuestion.id] === "string" ? String(answers[aiLinkQuestion.id]) : ""}
+              onChange={event => changeAnswer(submission.answerForm!.sessionId, aiLinkQuestion.id, event.currentTarget.value)} />
+          </label> : null}
           <label className="player-attachment-zone mt-5 grid gap-2 text-sm text-white/80">
             <span>{answerAttachment ? "มีไฟล์คำตอบแนบแล้ว" : `อนุญาต: ${submission.requirements.allowedAnswerAttachmentExtensions.map((extension) => extension.toUpperCase()).join(", ")}`}</span>
             <input accept={attachmentAccept(submission.requirements.allowedAnswerAttachmentExtensions)} aria-describedby="answer-attachment-state" className="min-h-12 max-w-full border border-white/20 bg-black p-2 text-sm file:mr-3 file:min-h-9 file:border-0 file:bg-white/10 file:px-3 file:text-white" disabled={uploading || Boolean(submission.uploads.answerAttachment)} onChange={(event) => void uploadFile("answer_attachment", event.currentTarget.files?.[0])} type="file" />
@@ -654,8 +686,8 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
         <h2>พร้อมยืนยันสิ่งที่คุณคิดแล้วหรือยัง?</h2>
         <p>{finalRequiresAi
           ? "ตรวจคำตอบและ post-test ให้ครบ พร้อมแนบไฟล์ PDF บทสนทนากับ AI"
-          : "กรอกคำตอบในระบบให้ครบ หรือแนบไฟล์คำตอบหนึ่งรายการ แล้วส่งคำตอบได้ทันที"}</p>
-        {answerAttachmentAllowed ? <p className="player-upload-state" role="status">{submission.uploads.answerAttachment ? `ไฟล์คำตอบ: ${submission.uploads.answerAttachment.original_name}` : "ยังไม่ได้แนบไฟล์คำตอบ (กรอกคำตอบในระบบแทนได้)"}</p> : null}
+          : submission.requirements.requiresAnswerForm ? "ตรวจคำตอบทั้ง 5 ข้อ ระดับความมั่นใจ ลิงก์บทสนทนากับ AI และไฟล์สไลด์ให้ครบ แล้วกดส่งคำตอบ" : "กรอกคำตอบในระบบให้ครบ หรือแนบไฟล์คำตอบหนึ่งรายการ แล้วส่งคำตอบได้ทันที"}</p>
+        {answerAttachmentAllowed ? <p className="player-upload-state" role="status">{submission.uploads.answerAttachment ? `ไฟล์คำตอบ: ${submission.uploads.answerAttachment.original_name}` : submission.requirements.requiresAnswerAttachment ? "ยังไม่ได้แนบสไลด์ (จำเป็นก่อนส่ง)" : "ยังไม่ได้แนบไฟล์คำตอบ (กรอกคำตอบในระบบแทนได้)"}</p> : null}
         {finalRequiresAi ? <p className="player-upload-state" role="status">{submission.uploads.aiChatPdf ? `ไฟล์ AI chat PDF: ${submission.uploads.aiChatPdf.original_name}` : "ยังไม่ได้แนบไฟล์ PDF"}</p> : null}
         {message ? <p aria-live="polite" className="mt-4 text-sm text-red-200">{message}</p> : null}
         <InvestigativeAction className="mt-6 w-full sm:w-auto" disabled={saving || uploading || acknowledgementPending || (finalRequiresAi && (!acknowledged || !submission.uploads.aiChatPdf))} onClick={() => void finalize()}>
@@ -688,11 +720,13 @@ function QuestionnairePanel({
   sectionId: string;
   stage: string;
 }) {
-  const [complete, setComplete] = useState(form.completed);
+  const [locallyComplete, setComplete] = useState(form.completed);
+  const complete = form.completed || locallyComplete;
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
-  const answeredCount = form.questions.filter((question) => hasAnswer(answers[question.id])).length;
-  const questionCount = form.questions.length;
+  const visibleQuestions = form.questions.filter(question => question.key !== "ai_chat_link");
+  const answeredCount = visibleQuestions.filter((question) => hasAnswer(answers[question.id])).length;
+  const questionCount = visibleQuestions.length;
 
   return (
     <Panel className="player-questionnaire" data-guide={guideTarget} id={sectionId}>
@@ -701,15 +735,17 @@ function QuestionnairePanel({
         <div aria-label={`กรอกแล้ว ${answeredCount} จาก ${questionCount} ข้อ`} className="player-questionnaire-count"><strong>{String(answeredCount).padStart(2, "0")}</strong><span>/ {String(questionCount).padStart(2, "0")} ข้อที่กรอก</span></div>
       </div>
       <div aria-label={`ความคืบหน้าการกรอก ${answeredCount} จาก ${questionCount} ข้อ`} aria-valuemax={questionCount} aria-valuemin={0} aria-valuenow={answeredCount} className="player-questionnaire-progress" role="progressbar"><span style={{ width: `${questionCount ? answeredCount / questionCount * 100 : 0}%` }} /></div>
-      <p className="player-questionnaire-help">อ่านคำถามทีละข้อ แล้วบันทึกแบบสอบถามเมื่อพร้อม</p>
+      <p className="player-questionnaire-help">{form.questions.some(question => question.key === "ai_chat_link") ? "ตอบคำถามทั้ง 5 ข้อ พร้อมใส่ลิงก์ AI ในส่วนที่ 6 ด้านล่าง คำตอบบันทึกอัตโนมัติ" : "อ่านคำถามทีละข้อ แล้วบันทึกแบบสอบถามเมื่อพร้อม"}</p>
       <div className="player-question-list">
-        {form.questions.map((question, index) => {
+        {visibleQuestions.map((question, index) => {
           const required = question.required || requiredQuestionKeys.includes(question.key);
           const answered = hasAnswer(answers[question.id]);
           const promptId = `question-${form.sessionId}-${question.id}`;
           return (
             <fieldset aria-labelledby={promptId} className="player-question text-sm leading-6 text-white/85" data-answered={answered} disabled={complete} key={question.id}>
               <div className="player-question-heading" id={promptId}><span className="player-question-number">Q{String(index + 1).padStart(2, "0")}</span><span className="player-question-prompt">{question.promptTh}{required ? <span className="ml-1 text-orange-200">*</span> : null}</span></div>
+              {question.key === "ai_chat_link" ? <p className="text-sm leading-6 text-white/65">กดแชร์บทสนทนาใน AI ที่คุณใช้ แล้วคัดลอกลิงก์ https:// มาใส่ที่นี่ ลิงก์นี้จะไม่เผยแพร่สาธารณะ ใช้สำหรับงานวิจัยโดยทีมที่ได้รับสิทธิ์เท่านั้น</p> : null}
+              {question.type === "scale" ? <p className="text-sm text-white/65">1 = มั่นใจน้อยที่สุด · 5 = มั่นใจมากที่สุด</p> : null}
               <span className="player-question-state">{answered ? "กรอกแล้ว" : required ? "รอคำตอบ" : "ข้ามได้"}</span>
               {question.type === "scale" ? (
                 <span className="grid grid-cols-5 gap-2">
@@ -732,7 +768,7 @@ function QuestionnairePanel({
                   })}
                 </span>
               ) : question.type === "short" ? (
-                <input aria-label={question.promptTh} className="player-input" name={question.id} maxLength={500} value={typeof answers[question.id] === "string" ? String(answers[question.id]) : ""} onChange={(event) => onChange(form.sessionId, question.id, event.currentTarget.value)} />
+                <input aria-label={question.promptTh} className="player-input" name={question.id} type={question.key === "ai_chat_link" ? "url" : "text"} placeholder={question.key === "ai_chat_link" ? "https://…" : undefined} maxLength={500} value={typeof answers[question.id] === "string" ? String(answers[question.id]) : ""} onChange={(event) => onChange(form.sessionId, question.id, event.currentTarget.value)} />
               ) : (
                 <textarea aria-label={question.promptTh} className="player-input min-h-32 resize-y leading-6" name={question.id} maxLength={4000} value={typeof answers[question.id] === "string" ? String(answers[question.id]) : ""} onChange={(event) => onChange(form.sessionId, question.id, event.currentTarget.value)} />
               )}

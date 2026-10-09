@@ -116,7 +116,7 @@ function clientRequirements(requirements: SubmissionRequirements): SubmissionReq
 
 async function loadSubmission(row: SubmissionRow) {
   const [requirements, answerForm, posttestForm, uploadRows] = await Promise.all([
-    getSubmissionRequirements(env.DB, row.subgame_id),
+    getSubmissionRequirements(env.DB, row.subgame_id, row.questionnaire_session_id),
     loadQuestionnaire(row.questionnaire_session_id),
     loadQuestionnaire(row.posttest_session_id),
     env.DB.batch([
@@ -127,7 +127,7 @@ async function loadSubmission(row: SubmissionRow) {
       ).bind(row.id, row.user_id),
       env.DB.prepare(
         `SELECT id, original_name, bytes, status FROM uploads
-          WHERE submission_id = ? AND user_id = ? AND kind = 'answer_attachment'
+          WHERE submission_id = ? AND user_id = ? AND kind = 'answer_attachment' AND status IN ('uploaded','accepted')
           ORDER BY created_at DESC, rowid DESC LIMIT 1`,
       ).bind(row.id, row.user_id),
       env.DB.prepare(
@@ -140,7 +140,12 @@ async function loadSubmission(row: SubmissionRow) {
   const answerAttachment = uploadRows[1].results[0] as UploadSummary | undefined;
   const acknowledgement = uploadRows[2].results[0] as { acknowledged_at: string } | undefined;
 
+  const previous = requirements.instrumentVersion === "ka-submission-v2"
+    ? await env.DB.prepare("SELECT previous_session_id FROM submission_form_migrations WHERE submission_id = ?")
+      .bind(row.id).first<{ previous_session_id: string }>()
+    : null;
   return {
+    previousAnswerForm: previous ? await loadQuestionnaire(previous.previous_session_id) : null,
     acknowledgement: acknowledgement ?? null,
     answerForm,
     posttestForm,

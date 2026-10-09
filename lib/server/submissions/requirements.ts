@@ -10,6 +10,9 @@ export type SubmissionRequirements = {
   maxAnswerAttachmentBytes: number;
   requiredAnswerQuestionKeys: string[];
   requiresAiChatPdf: boolean;
+  requiresAnswerAttachment: boolean;
+  requiresAnswerForm: boolean;
+  requiresAiChatLink: boolean;
   requiresAnswerTextOrAttachment: boolean;
   requiresPosttest: boolean;
 };
@@ -89,6 +92,9 @@ function legacyRequirements(): SubmissionRequirements {
     instrumentVersion: "legacy-node-zone-v1",
     maxAnswerAttachmentBytes: maximumPrivateUploadBytes,
     requiredAnswerQuestionKeys: [],
+    requiresAnswerAttachment: false,
+    requiresAnswerForm: false,
+    requiresAiChatLink: false,
     requiresAiChatPdf: true,
     requiresAnswerTextOrAttachment: true,
     requiresPosttest: true,
@@ -101,6 +107,9 @@ function kaFallbackRequirements(): SubmissionRequirements {
     instrumentVersion: "netlood-city-submission-v1",
     maxAnswerAttachmentBytes: maximumPrivateUploadBytes,
     requiredAnswerQuestionKeys: [...kaRequiredAnswerQuestionKeys],
+    requiresAnswerAttachment: false,
+    requiresAnswerForm: false,
+    requiresAiChatLink: false,
     requiresAiChatPdf: false,
     requiresAnswerTextOrAttachment: true,
     requiresPosttest: false,
@@ -131,7 +140,11 @@ function requirementsFromRow(subgameId: string, row: RequirementRow): Submission
     row.allowed_answer_attachment_json ?? row.allowed_artifact_extensions_json,
   );
 
+  const metadata = parseJson(row.requirements_json) as Record<string, unknown> | null;
   return {
+    requiresAnswerAttachment: parseBoolean(metadata?.requiresAnswerAttachment, false),
+    requiresAnswerForm: parseBoolean(metadata?.requiresAnswerForm, false),
+    requiresAiChatLink: parseBoolean(metadata?.requiresAiChatLink, false),
     allowedAnswerAttachmentExtensions: requiresAnswerTextOrAttachment ? allowedAnswerAttachmentExtensions : [],
     instrumentVersion: typeof row.instrument_version === "string"
       ? row.instrument_version
@@ -158,7 +171,14 @@ function isMissingRequirementsTable(error: unknown): boolean {
 export async function getSubmissionRequirements(
   database: D1Database,
   subgameId: string,
+  answerSessionId?: string | null,
 ): Promise<SubmissionRequirements> {
+  // Revisions and receipts remain governed by their immutable instrument.
+  if (answerSessionId && kaSubgameIds.has(subgameId)) {
+    const instrument = await database.prepare(`SELECT q.version FROM questionnaire_sessions s
+      JOIN questionnaires q ON q.id = s.questionnaire_id WHERE s.id = ?`).bind(answerSessionId).first<{ version: string }>();
+    if (instrument?.version === "netlood-city-submission-v1") return kaFallbackRequirements();
+  }
   try {
     const row = await database.prepare(
       "SELECT * FROM subgame_submission_requirements WHERE subgame_id = ? LIMIT 1",
