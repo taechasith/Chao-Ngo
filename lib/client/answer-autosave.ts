@@ -102,6 +102,31 @@ export class AnswerAutosave {
     const results = await Promise.all(keys.map(key => this.write(key, keepalive)));
     return results.every(Boolean);
   }
+  historyAnswers(sessionId: string): Record<string, unknown> {
+    try {
+      const stored = JSON.parse(this.options.storage?.()?.getItem("chao-ngo:prior-answers:" + sessionId) ?? "[]") as PendingAnswer[];
+      return Object.fromEntries(stored.map(answer => [answer.questionId, answer.value]));
+    } catch { return {}; }
+  }
+  async rebindSession(sessionId: string, nextSessionId: string, map: (questionId: string, value: unknown) => string | undefined): Promise<Record<string, unknown>> {
+    await Promise.all([...this.flights.entries()].filter(([key]) => key.startsWith(sessionId + ":")).map(([, flight]) => flight));
+    const values: Record<string, unknown> = {};
+    const archived: PendingAnswer[] = [];
+    for (const answer of [...this.pending.values()].filter(item => item.sessionId === sessionId)) {
+      const id = map(answer.questionId, answer.value);
+      if (id) {
+        const existing = [...this.pending.values()].find(item => item.sessionId === nextSessionId && item.questionId === id);
+        values[id] = existing ? existing.value : answer.value;
+        if (!existing) this.enqueue(nextSessionId, id, answer.value);
+      }
+      else archived.push(answer);
+    }
+    // Keep incompatible, unsaved answers recoverable without endlessly retrying a closed form.
+    if (archived.length) try { this.options.storage?.()?.setItem("chao-ngo:prior-answers:" + sessionId, JSON.stringify([...Object.entries(this.historyAnswers(sessionId)).map(([questionId,value])=>({questionId,value})),...archived])); } catch { /* Server history remains available if browser storage is disabled. */ }
+    this.forget(sessionId);
+    this.notify(this.pending.size ? "saving" : "saved");
+    return values;
+  }
   forget(sessionId: string) {
     for (const [key, answer] of this.pending) if (answer.sessionId === sessionId) {
       clearTimeout(this.timers.get(key)); this.timers.delete(key); this.pending.delete(key);

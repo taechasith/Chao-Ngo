@@ -4,6 +4,7 @@ import { AiCompanionNotice } from "./ai-companion-notice";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useLiveQuestionnaire, compatibleQuestion } from "../../lib/client/use-live-questionnaire";
 import { useAnswerAutosave } from "../../lib/client/use-answer-autosave";
 import { aiChatUploadConsentVersion } from "../../lib/server/research-consent-copy";
 import { InvestigativeAction } from "./investigative-action";
@@ -19,6 +20,8 @@ type FormQuestion = {
 };
 
 type QuestionForm = {
+  id: string;
+  key: string;
   completed: boolean;
   version: string;
   questions: FormQuestion[];
@@ -136,6 +139,7 @@ function choices(value: unknown): Choice[] {
 
 function thaiError(code: string): string {
   const messages: Record<string, string> = {
+    QUESTIONNAIRE_UPDATED: "แอดมินแก้ไขคำถามแล้ว กรุณารออัปเดตและทบทวนคำตอบก่อนส่งอีกครั้ง",
     SLIDES_REQUIRED: "กรุณาแนบสไลด์เป็นไฟล์ PDF หรือ PPTX ก่อนส่ง",
     AI_CHAT_LINK_REQUIRED: "กรุณาใส่ลิงก์แชร์บทสนทนากับ AI ที่ขึ้นต้นด้วย https://",
     SUBMISSION_ANSWERS_INCOMPLETE: "กรุณาตอบคำถามที่จำเป็นให้ครบก่อนส่ง",
@@ -222,6 +226,26 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
     submissionRef.current = submission;
   }, [submission]);
 
+  const live = useLiveQuestionnaire({
+    forms: [submission?.answerForm, submission?.posttestForm].filter((form): form is QuestionForm => Boolean(form)),
+    enabled: submission?.status === "draft" && !saving && !uploading,
+    saver,
+    onUpdate: async (old, next, pending) => {
+      const current = submissionRef.current;
+      if (!current || current.status !== "draft") return;
+      const response = await fetch(`/api/submissions?subgameId=${encodeURIComponent(subgameId)}`, {cache:"no-store"});
+      if (!response.ok) throw new Error("Unable to reload current requirements");
+      const result = await response.json() as {submission:SubmissionPayload};
+      const updated = result.submission;
+      if (updated.previousAnswerForms) updated.previousAnswerForms = updated.previousAnswerForms.map(form => form.sessionId === old.sessionId ? {...form,responses:{...form.responses,...answersRef.current,...saver.historyAnswers(form.sessionId)}} : form);
+      const values = {...answersRef.current,...next.responses,...pending};
+      completedSessions.current.delete(old.sessionId);
+      submissionRef.current = updated; answersRef.current = values;
+      setSubmission(updated); setAnswers(values);
+      void saver.flush(next.sessionId);
+    },
+  });
+
   const startDraft = useCallback(async (selectedSubgameId: string) => {
     setSubgameId(selectedSubgameId);
     setLoading(true);
@@ -250,6 +274,19 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
         if (!form) continue;
         if (form.completed) saver.forget(form.sessionId);
         else Object.assign(initial, saver.restore(form.sessionId, form.questions.map(question => question.id)));
+      }
+      if (result.submission.status === "draft") {
+        const active = result.submission.answerForm;
+        for (const previous of result.submission.previousAnswerForms ?? []) {
+          previous.responses = {...previous.responses,...saver.historyAnswers(previous.sessionId)};
+          if (!active || previous.key !== active.key) continue;
+          saver.restore(previous.sessionId, previous.questions.map(q=>q.id));
+          Object.assign(initial, await saver.rebindSession(previous.sessionId,active.sessionId,(id,value)=>{
+            const source=previous.questions.find(q=>q.id===id); const target=active.questions.find(q=>q.key===source?.key);
+            return source && target && compatibleQuestion(source,target,value) ? target.id : undefined;
+          }));
+          previous.responses = {...previous.responses,...saver.historyAnswers(previous.sessionId)};
+        }
       }
       void saver.flush();
       answersRef.current = initial;
@@ -289,6 +326,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
   }
 
   async function completeForm(form: QuestionForm | null, requiredQuestionKeys: string[] = []): Promise<boolean> {
+    if (await live.refresh()) return false;
     if (!form || form.completed || completedSessions.current.has(form.sessionId)) return true;
     setMessage("");
     const missingText = form.questions.some((question) => {
@@ -431,6 +469,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
   }
 
   async function finalize() {
+    if (await live.refresh()) return;
     const current = submissionRef.current;
     if (!current) return;
     setSaving(true);
@@ -605,8 +644,10 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
           <p className="mt-2 whitespace-pre-wrap break-words text-sm text-white/70">{String(form.responses[question.id] ?? "ยังไม่ได้ตอบ")}</p>
         </div>)}
       </details>)}
+      {live.notice ? <p role="status" className="player-system-note">{live.notice}</p> : null}
+      {live.updating ? <p role="status">กำลังอัปเดตคำถาม… คำตอบที่กรอกไว้ยังอยู่</p> : null}
       {submission.answerForm ? (
-        <QuestionnairePanel
+        <fieldset className="contents" disabled={live.updating}><QuestionnairePanel
           answers={answers}
           form={submission.answerForm}
           guideTarget="submit-answer"
@@ -617,7 +658,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
           requiredQuestionKeys={submission.requirements.requiredAnswerQuestionKeys}
           sectionId="submission-stage-answer"
           stage="02"
-        />
+        /></fieldset>
       ) : null}
       {answerAttachmentAllowed ? (
         <Panel className="player-submission-panel" data-guide="submit-answer-attachment" id="submission-stage-answer-attachment">
@@ -646,7 +687,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
         </Panel>
       ) : null}
       {submission.posttestForm && submission.requirements.requiresPosttest ? (
-        <QuestionnairePanel
+        <fieldset className="contents" disabled={live.updating}><QuestionnairePanel
           answers={answers}
           form={submission.posttestForm}
           guideTarget="submit-posttest"
@@ -656,7 +697,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
           errorMessage={message}
           sectionId="submission-stage-posttest"
           stage="03"
-        />
+        /></fieldset>
       ) : null}
       {submission.requirements.requiresAiChatPdf ? (
         <Panel className="player-submission-panel" data-guide="submit-ai-pdf" id="submission-stage-ai-pdf">
@@ -694,7 +735,7 @@ export function SubmitFlow({ initialSubgameId = "" }: { initialSubgameId?: strin
         {answerAttachmentAllowed ? <p className="player-upload-state" role="status">{submission.uploads.answerAttachment ? `ไฟล์คำตอบ: ${submission.uploads.answerAttachment.original_name}` : submission.requirements.requiresAnswerAttachment ? "ยังไม่ได้แนบสไลด์ (จำเป็นก่อนส่ง)" : "ยังไม่ได้แนบไฟล์คำตอบ (กรอกคำตอบในระบบแทนได้)"}</p> : null}
         {finalRequiresAi ? <p className="player-upload-state" role="status">{submission.uploads.aiChatPdf ? `ไฟล์ AI chat PDF: ${submission.uploads.aiChatPdf.original_name}` : "ยังไม่ได้แนบไฟล์ PDF"}</p> : null}
         {message ? <p aria-live="polite" className="mt-4 text-sm text-red-200">{message}</p> : null}
-        <InvestigativeAction className="mt-6 w-full sm:w-auto" disabled={saving || uploading || acknowledgementPending || (finalRequiresAi && (!acknowledged || !submission.uploads.aiChatPdf))} onClick={() => void finalize()}>
+        <InvestigativeAction className="mt-6 w-full sm:w-auto" disabled={live.updating || saving || uploading || acknowledgementPending || (finalRequiresAi && (!acknowledged || !submission.uploads.aiChatPdf))} onClick={() => void finalize()}>
           {saving ? "กำลังส่งคำตอบ…" : "ส่งคำตอบ"}
         </InvestigativeAction>
         <p className="mt-3 text-xs leading-5 text-white/50">ยังไม่มั่นใจ? กลับไปเปิดหลักฐานได้ทุกเมื่อ</p>

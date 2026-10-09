@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { compatibleQuestion, useLiveQuestionnaire, type LiveForm } from "../../lib/client/use-live-questionnaire";
 import { useAnswerAutosave } from "../../lib/client/use-answer-autosave";
 import { kaRouteForSubgameId } from "../../lib/ka-casefiles";
 import { Panel, StatusBadge } from "./panel";
@@ -53,6 +54,8 @@ type NoticeResponse = {
 
 type SessionResponse = {
   questionnaire: {
+    id: string;
+    key: string;
     questions: QuestionnaireQuestion[];
     title: string;
     version: string;
@@ -60,6 +63,7 @@ type SessionResponse = {
   responses: Record<string, unknown>;
   sessionId: string;
   completed?: boolean;
+  previousForms?: LiveForm[];
   recommendation?: Recommendation | null;
 };
 
@@ -147,6 +151,8 @@ function subgameName(subgameId: string): string {
 
 export function OnboardingFlow() {
   const [noticeResponse, setNoticeResponse] = useState<NoticeResponse | null>(null);
+  const [instrument, setInstrument] = useState<{id:string;key:string;title:string;version:string}|null>(null);
+  const [questionNotice, setQuestionNotice] = useState<LiveForm[]>([]);
   const [questions, setQuestions] = useState<QuestionnaireQuestion[]>([]);
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -160,6 +166,16 @@ export function OnboardingFlow() {
   const answersRef = useRef<Record<string, unknown>>({});
   const { saver, status: autosaveState, pendingCount } = useAnswerAutosave(setMessage);
   const [initializing, setInitializing] = useState(true);
+
+  const live = useLiveQuestionnaire({forms:instrument && sessionId ? [{...instrument,sessionId,questions,completed:false,responses:answers}] : [],enabled:step>=0 && saveState!=="saving",saver,
+    onUpdate:(old,next,pending)=>{
+      setQuestionNotice(previous=>[...previous,{...old,responses:{...old.responses,...answersRef.current}}]);
+      const initial={...next.responses,...pending}; answersRef.current=initial;sessionIdRef.current=next.sessionId;
+      setInstrument(next);setSessionId(next.sessionId);setQuestions(next.questions as QuestionnaireQuestion[]);setAnswers(initial);
+      setStep(current=>Math.min(current,Math.max(0,questionGroupStarts.map((start,index)=>next.questions.slice(start,questionGroupStarts[index+1])).filter(group=>group.length).length-1)));
+      void saver.flush(next.sessionId);
+    },
+  });
 
   const questionGroups = useMemo(
     () =>
@@ -187,7 +203,7 @@ export function OnboardingFlow() {
         if (!existing.ok) throw new Error(responseMessage(existing.status));
         const payload = await existing.json() as SessionResponse;
         if (!payload.sessionId) { setStep(-2); return; }
-        loadSession(payload);
+        await loadSession(payload);
       } catch (error) {
         if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "ไม่สามารถเชื่อมต่อกับระบบได้ในขณะนี้");
       } finally { if (!controller.signal.aborted) setInitializing(false); }
@@ -196,10 +212,21 @@ export function OnboardingFlow() {
     // loadSession reads only the session returned by the server on mount.
   }, [saver]);
 
-  function loadSession(payload: SessionResponse) {
+  async function loadSession(payload: SessionResponse) {
+    setInstrument(payload.questionnaire);
     sessionIdRef.current = payload.sessionId;
     const restored = payload.completed ? {} : saver.restore(payload.sessionId, payload.questionnaire.questions.map(question => question.id));
     const initial = { ...payload.responses, ...restored };
+    const previousForms = payload.previousForms ?? [];
+    if (!payload.completed) for (const previous of previousForms) {
+      saver.restore(previous.sessionId,previous.questions.map(q=>q.id));
+      Object.assign(initial,await saver.rebindSession(previous.sessionId,payload.sessionId,(id,value)=>{
+        const source=previous.questions.find(q=>q.id===id);
+        const target=payload.questionnaire.questions.find(q=>q.key===source?.key);
+        return source && target && compatibleQuestion(source,target,value) ? target.id : undefined;
+      }));
+    }
+    setQuestionNotice(previousForms.map(form=>({...form,responses:{...form.responses,...saver.historyAnswers(form.sessionId)}})));
     answersRef.current = initial;
     setSessionId(payload.sessionId);
     setQuestions(payload.questionnaire.questions);
@@ -272,7 +299,7 @@ export function OnboardingFlow() {
       }
 
       const payload = (await sessionResponse.json()) as SessionResponse;
-      loadSession(payload);
+      await loadSession(payload);
     } catch {
       setSaveState("error");
       setMessage("เครือข่ายไม่เสถียร ยังไม่สามารถเริ่มแบบสอบถามได้");
@@ -297,6 +324,7 @@ export function OnboardingFlow() {
   }
 
   async function completeQuestionnaire() {
+    if (await live.refresh()) return;
     if (!sessionId || !questions.every((question) => isQuestionAnswered(question, answersRef.current[question.id]))) {
       setMessage("กรุณาตอบคำถามที่จำเป็นให้ครบก่อนสรุปผล");
       return;
@@ -437,7 +465,9 @@ export function OnboardingFlow() {
         <div aria-hidden="true" className="h-px bg-white/10">
           <div className="h-px bg-[#8fc9c5] transition-[width]" style={{ width: `${((step + 1) / questionGroups.length) * 100}%` }} />
         </div>
-        <div className="mt-7 space-y-8">
+        {live.notice ? <p role="status" className="player-system-note mt-5">{live.notice}</p> : null}
+        {questionNotice.map(form=><details className="player-system-note mt-4" key={form.sessionId}><summary>คำตอบก่อนแก้ไขคำถาม · {form.version}</summary>{form.questions.map(q=><div key={q.id}><p>{q.promptTh}</p><p className="whitespace-pre-wrap">{String(form.responses[q.id] ?? "ยังไม่ได้ตอบ")}</p></div>)}</details>)}
+        <fieldset disabled={live.updating} className="mt-7 space-y-8">
           {currentGroup.map((question) => (
             <QuestionField
               answer={answers[question.id]}
@@ -446,7 +476,7 @@ export function OnboardingFlow() {
               question={question}
             />
           ))}
-        </div>
+        </fieldset>
         <FlowMessage message={message} saveState={pendingCount ? autosaveState : saveState} />
         {pendingCount ? <button className="player-button mt-3" onClick={() => { setMessage(null); void flushAnswers(); }} type="button">บันทึกคำตอบที่ค้าง / ลองอีกครั้ง</button> : null}
         <div className="mt-8 flex flex-wrap justify-between gap-3">

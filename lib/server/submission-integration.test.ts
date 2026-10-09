@@ -409,3 +409,43 @@ describe("onboarding saves personal data and resumes without writing consent aga
   });
 
 });
+
+describe("admin publication racing a player submit",()=>{
+  it("refuses the retired form at commit time, then accepts the refreshed answers",async()=>{
+    const user="live-finalize-race";
+    await env.DB.prepare('INSERT INTO "user"(id,name,email,emailVerified,createdAt,updatedAt) VALUES (?,?,?,1,0,0)').bind(user,"Synthetic QA",`${user}@example.test`).run();
+    await consent(request("POST",{consentVersion,dataNoticeVersion,researchParticipation:true,aiChatUploadConsent:false},user));
+    const {submission}=await (await startSubmission(request("POST",{subgameId:kaSubgameId},user))).json() as {submission:{submissionId:string;answerForm:{id:string;sessionId:string;questions:{id:string;type:string}[]}}};
+    const id=submission.submissionId,old=submission.answerForm.id,next="qa-live-finalize-instrument";
+    for(const q of submission.answerForm.questions) expect((await answer(request("PUT",{questionId:q.id,value:q.type==="scale"?4:"Synthetic QA preserved answer"},user),sessionContext(submission.answerForm.sessionId))).status).toBe(200);
+    await complete(request("POST",undefined,user),sessionContext(submission.answerForm.sessionId));
+    await acknowledge(request("POST",{acknowledged:true,consentVersion:aiChatUploadConsentVersion},user),context(id));
+    const slides=new FormData();slides.set("kind","answer_attachment");slides.set("file",new File([pdf as BlobPart],"QA-slides.pdf",{type:"application/pdf"}));
+    await upload(new Request("https://example.test/api/upload",{method:"POST",headers:{"x-test-user":user},body:slides}),context(id));
+    await upload(fileRequest(pdf,"application/pdf","QA-ai.pdf",user),context(id));
+    const db=env.DB;let published=false;
+    env.DB={prepare:db.prepare.bind(db),batch:async(statements:D1PreparedStatement[])=>{
+      if(statements.length===4&&!published) {
+        published=true;
+        await db.batch([
+          db.prepare("UPDATE questionnaires SET published=0 WHERE id=?").bind(old),
+          db.prepare("INSERT INTO questionnaires(id,questionnaire_key,version,title,published) SELECT ?,questionnaire_key,'qa-live-race',title,1 FROM questionnaires WHERE id=?").bind(next,old),
+          db.prepare("INSERT INTO questions(id,questionnaire_id,question_key,prompt_th,type,required,options_json,sort_order) SELECT 'live-'||id,?,question_key,prompt_th||'?',type,required,options_json,sort_order FROM questions WHERE questionnaire_id=?").bind(next,old),
+        ]);
+      }
+      return db.batch(statements);
+    }} as D1Database;
+    try {
+      const stopped=await finalize(request("POST",undefined,user),context(id));
+      expect(published).toBe(true);expect(stopped.status).toBe(409);expect(await stopped.json()).toEqual({code:"QUESTIONNAIRE_UPDATED"});
+      expect((await db.prepare("SELECT status FROM submissions WHERE id=?").bind(id).first())?.status).toBe("draft");
+      expect((await db.prepare("SELECT COUNT(*) n FROM activity_events WHERE user_id=? AND event_type='submission_finalized'").bind(user).first())?.n).toBe(0);
+    } finally {env.DB=db;}
+    const resumed=await (await startSubmission(request("POST",{subgameId:kaSubgameId},user))).json() as {submission:{answerForm:{sessionId:string;responses:Record<string,unknown>};uploads:unknown}};
+    expect(resumed.submission.answerForm.sessionId).not.toBe(submission.answerForm.sessionId);
+    expect(Object.values(resumed.submission.answerForm.responses)).toHaveLength(5);
+    expect((await answer(request("PUT",{questionId:submission.answerForm.questions[0].id,value:"late old edit"},user),sessionContext(submission.answerForm.sessionId))).status).toBe(409);
+    expect((await complete(request("POST",undefined,user),sessionContext(resumed.submission.answerForm.sessionId))).status).toBe(200);
+    expect((await finalize(request("POST",undefined,user),context(id))).status).toBe(201);
+  });
+});

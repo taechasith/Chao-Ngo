@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import process from "node:process";
 import console from "node:console";
 
-const reviewed = ["0014_research_profile_skills.sql", "0015_submission_reviews.sql", "0016_submission_lookup_index.sql", "0017_ka_casefiles_v2.sql", "0018_ka_submission_v2.sql", "0019_ka_ai_pdf.sql"];
+const reviewed = ["0014_research_profile_skills.sql", "0015_submission_reviews.sql", "0016_submission_lookup_index.sql", "0017_ka_casefiles_v2.sql", "0018_ka_submission_v2.sql", "0019_ka_ai_pdf.sql", "0020_live_question_updates.sql"];
 function query(sql) {
   const result = spawnSync(process.execPath, ["node_modules/wrangler/bin/wrangler.js", "d1", "execute", "DB", "--remote", "--command", sql, "--json"], { encoding: "utf8" });
   if (result.status !== 0) throw new Error("Production D1 preflight query failed; stop without applying migrations.");
