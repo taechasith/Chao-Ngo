@@ -97,3 +97,15 @@ describe("recommendations", () => {
     });
   });
 });
+
+describe("AI share links", () => {
+  const question = { id: "ai", questionKey: "ai_chat_link", required: true, type: "short" as const, optionsJson: '{"format":"https-url"}' };
+  it("accepts provider share links without retrieving their contents", () => {
+    for (const value of ["https://chatgpt.com/share/qa", "https://gemini.google.com/share/qa", "https://claude.ai/share/qa"])
+      expect(validateQuestionValue(question, value).success).toBe(true);
+  });
+  it("rejects non-URLs, credentials, unsafe schemes and incomplete links", () => {
+    for (const value of ["not a link", "https://", "http://example.com/chat", "javascript:alert(1)", "https://user:secret@example.com/chat", "https://localhost/chat", "https://127.0.0.1/chat"])
+      expect(validateQuestionValue(question, value).success).toBe(false);
+  });
+});

@@ -7,6 +7,7 @@ import { getResearchRetentionYears } from "../../../../../lib/server/research-re
 import { isSameOriginRequest } from "../../../../../lib/server/request-security";
 import { recalculateCompletionForUser } from "../../../../../lib/server/completion";
 import { isWithinPlayerMutationLimit } from "../../../../../lib/server/request-limits";
+import { isHttpsShareUrl, validateQuestionValue, type QuestionType } from "../../../../../lib/server/questionnaires/validation";
 import { getSubmissionRequirements, type SubmissionRequirements } from "../../../../../lib/server/submissions/requirements";
 
 export const dynamic = "force-dynamic";
@@ -51,13 +52,20 @@ async function answerTextIsComplete(
   if (!requirements.requiredAnswerQuestionKeys.length) return true;
 
   const answers = await env.DB.prepare(
-    `SELECT questions.question_key, responses.value_json
+    `SELECT questions.id, questions.question_key, questions.type, questions.required, questions.options_json, responses.value_json
        FROM questions
        LEFT JOIN responses ON responses.question_id = questions.id AND responses.session_id = ?
       WHERE questions.questionnaire_id = (
         SELECT questionnaire_id FROM questionnaire_sessions WHERE id = ? AND user_id = ?
       )`,
-  ).bind(session.id, session.id, userId).all<{ question_key: string; value_json: string | null }>();
+  ).bind(session.id, session.id, userId).all<{ id: string; question_key: string; type: QuestionType; required: number; options_json: string; value_json: string | null }>();
+  if (requirements.requiresAnswerForm && answers.results.some(question => {
+    if (!question.required) return false;
+    try {
+      return !validateQuestionValue({ id: question.id, questionKey: question.question_key,
+        type: question.type, required: true, optionsJson: question.options_json }, JSON.parse(question.value_json ?? "null")).success;
+    } catch { return true; }
+  })) return false;
   const values = new Map(answers.results.map((item) => [item.question_key, item.value_json]));
   return requirements.requiredAnswerQuestionKeys.every((key) => hasTextValue(values.get(key) ?? null));
 }
@@ -114,7 +122,7 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
   }
   if (submission.status !== "draft") return response({ code: "SUBMISSION_NOT_DRAFT" }, 409);
 
-  const requirements = await getSubmissionRequirements(env.DB, submission.subgame_id);
+  const requirements = await getSubmissionRequirements(env.DB, submission.subgame_id, submission.questionnaire_session_id);
   const validation = await env.DB.batch([
     sessionStatement(submission.questionnaire_session_id, participant.userId),
     sessionStatement(submission.posttest_session_id, participant.userId),
@@ -123,8 +131,8 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
         AND status IN ('uploaded', 'accepted') LIMIT 1`,
     ).bind(submissionId, participant.userId),
     env.DB.prepare(
-      `SELECT id FROM uploads WHERE submission_id = ? AND user_id = ? AND kind = 'answer_attachment'
-        AND status IN ('uploaded', 'accepted') LIMIT 1`,
+      `SELECT id, original_name FROM uploads WHERE submission_id = ? AND user_id = ? AND kind = 'answer_attachment'
+        AND status IN ('uploaded', 'accepted') ORDER BY created_at DESC, rowid DESC LIMIT 1`,
     ).bind(submissionId, participant.userId),
     env.DB.prepare(
       `SELECT id FROM submission_consent_acknowledgements
@@ -138,12 +146,26 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
   const answerAttachment = validation[3].results[0];
   const acknowledgement = validation[4].results[0];
 
+  if (requirements.requiresAnswerAttachment) {
+    const attachment = answerAttachment as { original_name: string } | undefined;
+    const extension = attachment?.original_name.split(".").pop()?.toLowerCase();
+    if (!extension || !requirements.allowedAnswerAttachmentExtensions.some(item => item === extension)) {
+      return response({ code: "SLIDES_REQUIRED" }, 400);
+    }
+  }
+  if (requirements.requiresAiChatLink) {
+    const link = await env.DB.prepare(`SELECT r.value_json FROM responses r JOIN questions q ON q.id = r.question_id
+      WHERE r.session_id = ? AND q.question_key = 'ai_chat_link'`).bind(submission.questionnaire_session_id).first<{ value_json: string }>();
+    let value: unknown;
+    try { value = JSON.parse(link?.value_json ?? "null"); } catch { value = null; }
+    if (!isHttpsShareUrl(value)) return response({ code: "AI_CHAT_LINK_REQUIRED" }, 400);
+  }
   if (requirements.requiresAnswerTextOrAttachment) {
     const answerSessionMatches = answerSession?.questionnaire_key === `submission:${submission.subgame_id}`;
-    if (!answerAttachment && (!answerSessionMatches || !(await answerTextIsComplete(answerSession, requirements, participant.userId)))) {
+    if ((requirements.requiresAnswerForm || !answerAttachment) && (!answerSessionMatches || !(await answerTextIsComplete(answerSession, requirements, participant.userId)))) {
       return response({
         code: requirements.requiredAnswerQuestionKeys.length
-          ? "ANSWER_TEXT_OR_ATTACHMENT_REQUIRED"
+          ? requirements.requiresAnswerForm ? "SUBMISSION_ANSWERS_INCOMPLETE" : "ANSWER_TEXT_OR_ATTACHMENT_REQUIRED"
           : "SUBMISSION_ANSWERS_INCOMPLETE",
       }, 400);
     }

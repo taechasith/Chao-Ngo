@@ -46,8 +46,8 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
 
   const { submissionId } = await context.params;
   const draft = await env.DB.prepare(
-    "SELECT id, subgame_id FROM submissions WHERE id = ? AND user_id = ? AND status = 'draft'",
-  ).bind(submissionId, participant.userId).first<{ id: string; subgame_id: string }>();
+    "SELECT id, subgame_id, questionnaire_session_id FROM submissions WHERE id = ? AND user_id = ? AND status = 'draft'",
+  ).bind(submissionId, participant.userId).first<{ id: string; subgame_id: string; questionnaire_session_id: string | null }>();
   if (!draft) return response({ code: "DRAFT_NOT_FOUND" }, 404);
 
   const contentLength = Number(request.headers.get("content-length") ?? 0);
@@ -65,7 +65,7 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
   const formFile = form.get("file");
   if (!(formFile instanceof File)) return response({ code: kind === "ai_chat_pdf" ? "PDF_REQUIRED" : "ANSWER_ATTACHMENT_REQUIRED" }, 400);
 
-  const requirements = await getSubmissionRequirements(env.DB, draft.subgame_id);
+  const requirements = await getSubmissionRequirements(env.DB, draft.subgame_id, draft.questionnaire_session_id);
   const bucket = env.PRIVATE_UPLOADS;
   if (!bucket) return response({ code: "PRIVATE_STORAGE_UNAVAILABLE" }, 503);
 
@@ -163,7 +163,7 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
   if (!validation.success) return response({ code: validation.code }, validation.code === "ANSWER_ATTACHMENT_SIZE_INVALID" ? 413 : 400);
 
   const count = await env.DB.prepare(
-    "SELECT COUNT(*) AS count FROM uploads WHERE submission_id = ? AND user_id = ? AND kind = 'answer_attachment'",
+    "SELECT COUNT(*) AS count FROM uploads WHERE submission_id = ? AND user_id = ? AND kind = 'answer_attachment' AND status IN ('uploaded','accepted')",
   ).bind(submissionId, participant.userId).first<{ count: number }>();
   if ((count?.count ?? 0) >= 1) return response({ code: "UPLOAD_LIMIT_REACHED" }, 429);
 
@@ -199,7 +199,7 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
          WHERE EXISTS (SELECT 1 FROM submissions WHERE id = ? AND user_id = ? AND status = 'draft')
            AND EXISTS (SELECT 1 FROM consent_records WHERE user_id = ? AND consent_version = ?
              AND research_participation = 1 AND withdrawn_at IS NULL)
-           AND (SELECT COUNT(*) FROM uploads WHERE submission_id = ? AND kind = 'answer_attachment') < 1`,
+           AND (SELECT COUNT(*) FROM uploads WHERE submission_id = ? AND kind = 'answer_attachment' AND status IN ('uploaded','accepted')) < 1`,
     ).bind(
       uploadId,
       submissionId,

@@ -7,7 +7,6 @@ import { env } from "./testing/cloudflare";
 import { aiChatUploadConsentVersion, consentVersion, dataNoticeVersion } from "./research-consent-copy";
 import { cleanExpiredResearch } from "./research-cleanup";
 import { recalculateCompletionForUser } from "./completion";
-import { getSubmissionRequirements } from "./submissions/requirements";
 import { isWithinPlayerMutationLimit } from "./request-limits";
 import { GET as getSubmission, POST as startSubmission } from "../../app/api/submissions/route";
 import { POST as consent } from "../../app/api/research-consent/route";
@@ -123,69 +122,85 @@ describe("B6 real D1/private R2 contracts", () => {
     expect(await env.PUBLIC_ASSETS.head(key)).toBeNull();
   });
 
-  it("allows a K.A. text-or-attachment submission without post-test or AI-PDF consent", async () => {
+  it("requires all five K.A. answers, a valid private AI link, and slides together", async () => {
     const created = await startSubmission(request("POST", { subgameId: kaSubgameId }, stranger));
     expect(created.status).toBe(201);
-    const body = await created.json() as {
-      submission: {
-        acknowledgement: unknown;
-        posttestForm: unknown;
-        requirements: { requiresAiChatPdf: boolean; requiresPosttest: boolean };
-        submissionId: string;
-      };
-    };
-    const kaSubmissionId = body.submission.submissionId;
-    expect(body.submission).toMatchObject({
-      acknowledgement: null,
-      posttestForm: null,
-      requirements: { requiresAiChatPdf: false, requiresPosttest: false },
-    });
-    expect((await acknowledge(request("POST", { acknowledged: true, consentVersion: aiChatUploadConsentVersion }, stranger), context(kaSubmissionId))).status).toBe(409);
-    expect((await upload(answerAttachmentRequest(), context(kaSubmissionId))).status).toBe(201);
-    expect((await finalize(request("POST", undefined, stranger), context(kaSubmissionId))).status).toBe(201);
-    expect(await env.DB.prepare(
-      "SELECT posttest_session_id, status FROM submissions WHERE id = ? AND user_id = ?",
-    ).bind(kaSubmissionId, stranger).first()).toMatchObject({ posttest_session_id: null, status: "submitted" });
-    expect(await env.DB.prepare(
-      `SELECT submissions.status,
-              games.status AS game_status,
-              subgames.status AS subgame_status,
-              EXISTS(
-                SELECT 1 FROM uploads
-                 WHERE uploads.submission_id = submissions.id
-                   AND uploads.user_id = submissions.user_id
-                   AND uploads.kind = 'answer_attachment'
-                   AND uploads.status IN ('uploaded', 'accepted')
-              ) AS answer_attachment_uploaded,
-              (SELECT value FROM app_metadata WHERE key = 'completion_auto_pass_submissions') AS auto_pass
-         FROM submissions
-         INNER JOIN subgames ON subgames.id = submissions.subgame_id
-         INNER JOIN games ON games.id = subgames.game_id
-        WHERE submissions.id = ?`,
-    ).bind(kaSubmissionId).first()).toMatchObject({
-      answer_attachment_uploaded: 1,
-      auto_pass: "true",
-      game_status: "playable",
-      status: "submitted",
-      subgame_status: "playable",
-    });
-    await expect(getSubmissionRequirements(env.DB, kaSubgameId)).resolves.toMatchObject({
-      requiresAiChatPdf: false,
-      requiresAnswerTextOrAttachment: true,
-      requiresPosttest: false,
-    });
-    const savedKa = await (await getSubmission(new Request(`https://example.test/api/submissions?subgameId=${kaSubgameId}`, { headers: { "x-test-user": stranger } }))).json() as { submission: { answerForm: { sessionId: string; questions: { id: string }[] } } };
-    expect((await answer(request("PUT", { questionId: savedKa.submission.answerForm.questions[0].id, value: "late attachment edit" }, stranger), sessionContext(savedKa.submission.answerForm.sessionId))).status).toBe(409);
+    const { submission: ka } = await created.json() as { submission: {
+      submissionId: string; posttestForm: unknown; requirements: unknown;
+      answerForm: { sessionId: string; questions: { id: string; key: string; type: string; promptTh: string }[] };
+    } };
+    expect(ka).toMatchObject({ posttestForm: null, requirements: {
+      requiresAnswerForm: true, requiresAnswerAttachment: true, requiresAiChatLink: true,
+      requiresAiChatPdf: false, requiresPosttest: false, allowedAnswerAttachmentExtensions: ["pdf","pptx"],
+    } });
+    expect(ka.answerForm.questions).toHaveLength(6);
+    expect(ka.answerForm.questions[2].promptTh).toContain("Finance");
+    expect((await finalize(request("POST", undefined, stranger), context(ka.submissionId))).status).toBe(400);
+    expect((await upload(answerAttachmentRequest(), context(ka.submissionId))).status).toBe(400);
+    const slides = new FormData();
+    slides.set("kind", "answer_attachment");
+    slides.set("file", new File([pdf as BlobPart], "QA-slides.pdf", { type: "application/pdf" }));
+    expect((await upload(new Request("https://example.test/api/upload", { method: "POST", headers: { "x-test-user": stranger }, body: slides }), context(ka.submissionId))).status).toBe(201);
+    // An attachment no longer bypasses unanswered fields.
+    expect((await finalize(request("POST", undefined, stranger), context(ka.submissionId))).status).toBe(400);
+    const link = ka.answerForm.questions.find(q => q.key === "ai_chat_link")!;
+    expect((await answer(request("PUT", { questionId: link.id, value: "javascript:alert(1)" }, stranger), sessionContext(ka.answerForm.sessionId))).status).toBe(400);
+    const confidence = ka.answerForm.questions.find(q => q.key === "answer_confidence")!;
+    expect((await answer(request("PUT", { questionId: confidence.id, value: 6 }, stranger), sessionContext(ka.answerForm.sessionId))).status).toBe(400);
+    for (const question of ka.answerForm.questions) {
+      if (question.key === "answer_confidence") continue;
+      const value = question.key === "ai_chat_link" ? "https://chatgpt.com/share/qa-test-conversation" : "QA local integration answer";
+      expect((await answer(request("PUT", { questionId: question.id, value }, stranger), sessionContext(ka.answerForm.sessionId))).status).toBe(200);
+    }
+    expect((await complete(request("POST", undefined, stranger), sessionContext(ka.answerForm.sessionId))).status).toBe(400);
+    expect((await answer(request("PUT", { questionId: confidence.id, value: 4 }, stranger), sessionContext(ka.answerForm.sessionId))).status).toBe(200);
+    expect((await complete(request("POST", undefined, stranger), sessionContext(ka.answerForm.sessionId))).status).toBe(200);
+    expect((await finalize(request("POST", undefined, stranger), context(ka.submissionId))).status).toBe(201);
+    const restored = await (await getSubmission(new Request(`https://example.test/api/submissions?subgameId=${kaSubgameId}`, { headers: { "x-test-user": stranger } }))).json() as { submission: { status: string; answerForm: { responses: Record<string, unknown> } } };
+    expect(restored.submission.status).toBe("submitted");
+    expect(restored.submission.answerForm.responses[link.id]).toBe("https://chatgpt.com/share/qa-test-conversation");
+    expect(restored.submission.answerForm.responses[confidence.id]).toBe(4);
+    expect((await getSubmission(new Request(`https://example.test/api/submissions?subgameId=${kaSubgameId}`))).status).toBe(401);
+    const stored = await env.DB.prepare("SELECT private_r2_key FROM uploads WHERE submission_id = ?").bind(ka.submissionId).first<{ private_r2_key: string }>();
+    expect(await env.PRIVATE_UPLOADS.head(stored!.private_r2_key)).not.toBeNull();
+    expect(await env.PUBLIC_ASSETS.head(stored!.private_r2_key)).toBeNull();
     const completion = await recalculateCompletionForUser(stranger);
     expect(completion.completedSubgameIds).toContain(kaSubgameId);
-    expect(completion.requiredSubgameIds).not.toContain(kaSubgameId);
-    expect(completion.letterEligible).toBe(false);
-    expect(await env.DB.prepare(
-      "SELECT status FROM subgame_progress WHERE user_id = ? AND subgame_id = ?",
-    ).bind(stranger, kaSubgameId).first()).toMatchObject({ status: "completed" });
-    expect(await env.DB.prepare(
-      "SELECT id FROM achievements WHERE user_id = ? AND achievement_key = 'subgame_completed' AND subgame_id = ?",
-    ).bind(stranger, kaSubgameId).first()).not.toBeNull();
+    expect((await answer(request("PUT", { questionId: link.id, value: "https://example.test/late" }, stranger), sessionContext(ka.answerForm.sessionId))).status).toBe(409);
+  });
+
+  it("uses Bio for WA VE and refuses submission without slides after completing its answers", async () => {
+    const created = await startSubmission(request("POST", { subgameId: "subgame-ka-wa-ve" }, stranger));
+    const { submission: ka } = await created.json() as { submission: { submissionId: string; answerForm: { sessionId: string; questions: { id: string; key: string; type: string; promptTh: string }[] } } };
+    expect(ka.answerForm.questions[2].promptTh).toContain("Bio");
+    for (const q of ka.answerForm.questions) {
+      const value = q.type === "scale" ? 3 : q.key === "ai_chat_link" ? "https://gemini.google.com/share/qa-only" : "QA Bio answer";
+      expect((await answer(request("PUT", { questionId: q.id, value }, stranger), sessionContext(ka.answerForm.sessionId))).status).toBe(200);
+    }
+    expect((await complete(request("POST", undefined, stranger), sessionContext(ka.answerForm.sessionId))).status).toBe(200);
+    expect(await (await finalize(request("POST", undefined, stranger), context(ka.submissionId))).json()).toMatchObject({ code: "SLIDES_REQUIRED" });
+    const slides = new FormData(); slides.set("kind","answer_attachment");
+    slides.set("file", new File([pdf as BlobPart],"QA-bio-slides.pdf", { type: "application/pdf" }));
+    expect((await upload(new Request("https://example.test/api/upload", { method: "POST", headers: { "x-test-user": stranger }, body: slides }), context(ka.submissionId))).status).toBe(201);
+    expect((await finalize(request("POST", undefined, stranger), context(ka.submissionId))).status).toBe(201);
+  });
+
+  it("revises a legacy K.A. receipt using the new form while retaining its original answers", async () => {
+    const user = "qa-legacy-revision";
+    await env.DB.prepare(`INSERT INTO "user" (id,name,email,emailVerified,createdAt,updatedAt) VALUES (?, 'QA legacy revision', ?,1,0,0)`).bind(user, `${user}@example.test`).run();
+    await consent(request("POST", { consentVersion, dataNoticeVersion, researchParticipation: true, aiChatUploadConsent: false }, user));
+    await env.DB.prepare("INSERT INTO questionnaire_sessions (id,user_id,questionnaire_id,completed_at) VALUES ('legacy-revision-session',?,'questionnaire-submission-ka-maimee-netlood-city-v1',CURRENT_TIMESTAMP)").bind(user).run();
+    await env.DB.prepare("INSERT INTO responses (id,session_id,question_id,value_json) VALUES ('legacy-revision-answer','legacy-revision-session','question-submission-ka-maimee-model','\"QA original receipt\"')").run();
+    await env.DB.prepare("INSERT INTO submissions (id,user_id,subgame_id,questionnaire_session_id,status) VALUES ('legacy-revision-receipt',?,'subgame-ka-fintech','legacy-revision-session','needs_revision')").bind(user).run();
+    const result = await revise(request("POST",undefined,user),context("legacy-revision-receipt"));
+    expect(result.status).toBe(201);
+    const restored = await (await getSubmission(new Request(`https://example.test/api/submissions?subgameId=${kaSubgameId}`, { headers: { "x-test-user": user } }))).json() as { submission: { requirements: unknown; answerForm: { questions: { id: string; key: string }[]; responses: Record<string, unknown> }; previousAnswerForm: { responses: Record<string, unknown> } } };
+    expect(restored.submission.requirements).toMatchObject({ instrumentVersion: "ka-submission-v2", requiresAnswerForm: true });
+    expect(restored.submission.answerForm.questions).toHaveLength(6);
+    const summary = restored.submission.answerForm.questions.find(q => q.key === "case_summary")!;
+    expect(restored.submission.answerForm.responses[summary.id]).toBe("QA original receipt");
+    expect(restored.submission.previousAnswerForm.responses["question-submission-ka-maimee-model"]).toBe("QA original receipt");
+    expect(await env.DB.prepare("SELECT questionnaire_session_id FROM submissions WHERE id = 'legacy-revision-receipt'").first()).toEqual({ questionnaire_session_id: "legacy-revision-session" });
   });
 
   it("persists answers, rejects incomplete forms and makes completion idempotent", async () => {
@@ -352,9 +367,16 @@ describe("onboarding saves personal data and resumes without writing consent aga
     await env.DB.prepare('INSERT INTO "user" (id, name, email, emailVerified, createdAt, updatedAt) VALUES (?, ?, ?, 1, 0, 0)')
       .bind(user, "QA overload", `${user}@example.test`).run();
     await consent(request("POST", { consentVersion, dataNoticeVersion, researchParticipation: true, aiChatUploadConsent: false }, user));
-    const draft = await (await startSubmission(request("POST", { subgameId: kaSubgameId }, user))).json() as { submission: { submissionId: string } };
+    const draft = await (await startSubmission(request("POST", { subgameId: kaSubgameId }, user))).json() as { submission: { submissionId: string; answerForm: { sessionId: string; questions: { id: string; key: string; type: string }[] } } };
     const id = draft.submission.submissionId;
-    expect((await upload(answerAttachmentRequest(user), context(id))).status).toBe(201);
+    const slides = new FormData(); slides.set("kind", "answer_attachment");
+    slides.set("file", new File([pdf as BlobPart], "QA-slides.pdf", { type: "application/pdf" }));
+    expect((await upload(new Request("https://example.test/api/upload", { method: "POST", headers: { "x-test-user": user }, body: slides }), context(id))).status).toBe(201);
+    for (const q of draft.submission.answerForm.questions) {
+      const value = q.type === "scale" ? 3 : q.key === "ai_chat_link" ? "https://example.test/qa-chat" : "QA overload answer";
+      expect((await answer(request("PUT", { questionId: q.id, value }, user), sessionContext(draft.submission.answerForm.sessionId))).status).toBe(200);
+    }
+    expect((await complete(request("POST", undefined, user), sessionContext(draft.submission.answerForm.sessionId))).status).toBe(200);
     const database = env.DB;
     env.DB = {
       prepare(sql: string) {

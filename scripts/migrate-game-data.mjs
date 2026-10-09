@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import process from "node:process";
 import console from "node:console";
 
-const reviewed = ["0014_research_profile_skills.sql", "0015_submission_reviews.sql", "0016_submission_lookup_index.sql", "0017_ka_casefiles_v2.sql"];
+const reviewed = ["0014_research_profile_skills.sql", "0015_submission_reviews.sql", "0016_submission_lookup_index.sql", "0017_ka_casefiles_v2.sql", "0018_ka_submission_v2.sql"];
 function query(sql) {
   const result = spawnSync(process.execPath, ["node_modules/wrangler/bin/wrangler.js", "d1", "execute", "DB", "--remote", "--command", sql, "--json"], { encoding: "utf8" });
   if (result.status !== 0) throw new Error("Production D1 preflight query failed; stop without applying migrations.");
@@ -37,7 +37,7 @@ if (pending.length) {
   if (result.status !== 0) throw new Error("Migration failed; inspect the ledger before retrying.");
 }
 const after = query(countsSql);
-if (JSON.stringify(before) !== JSON.stringify(after)) throw new Error("Record counts changed during rollout; investigate concurrent writes before deploying.");
+if (Object.keys(before[0]).some(key => after[0][key] < before[0][key])) throw new Error("Record counts decreased during rollout; investigate before deploying.");
 console.log(JSON.stringify({ preservedRecordCountsAfter: after }));
 const check = spawnSync(process.execPath, ["scripts/check-game-data.mjs", "--remote"], { stdio: "inherit" });
 if (check.status !== 0) process.exit(1);
