@@ -56,7 +56,6 @@ export async function PATCH(request: Request) {
   const parsed = researchProfileSchema.safeParse(body);
   if (!parsed.success) return json({ code: "INVALID_RESEARCH_PROFILE" }, 400);
   const profile = parsed.data;
-  if (profile.age < participant.minimumParticipantAge) return json({ code: "AGE_NOT_ELIGIBLE" }, 400);
   if (!(await isWithinPlayerMutationLimit(participant.userId, "research-profile", 12))) return json({ code: "REQUEST_RATE_LIMITED" }, 429);
 
   const result = await env.DB.prepare(

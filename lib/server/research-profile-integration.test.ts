@@ -7,7 +7,7 @@ import { GET, PATCH } from "../../app/api/player-research-profile/route";
 vi.mock("./research-access", () => ({
   requireResearchParticipant: async (request: Request) => {
     const id = request.headers.get("x-test-user");
-    return id ? { userId: id, minimumParticipantAge: 18 } : Response.json({ code: "UNAUTHENTICATED" }, { status: 401 });
+    return id ? { userId: id, minimumParticipantAge: 0 } : Response.json({ code: "UNAUTHENTICATED" }, { status: 401 });
   },
 }));
 
@@ -50,7 +50,8 @@ describe("participant research profile", () => {
 
   it("validates age, ratings, skill bounds and unexpected fields", async () => {
     for (const body of [
-      { ...payload, age: 17 },
+      { ...payload, age: -1 },
+      { ...payload, age: 12.5 },
       { ...payload, scienceInterest: 6 },
       { ...payload, fieldInterests: { ...initialFields, quantum: 0 } },
       { ...payload, personalSkills: ["same", "Same"] },
@@ -58,6 +59,11 @@ describe("participant research profile", () => {
       { ...payload, personalSkills: Array.from({ length: 9 }, (_, index) => `skill ${index}`) },
       { ...payload, userId: other },
     ]) expect((await PATCH(request(owner, body))).status).toBe(400);
+  });
+
+  it.each([0, 12, 17])("accepts age %s without an adult-only profile restriction", async age => {
+    expect((await PATCH(request(owner, { ...payload, age }))).status).toBe(200);
+    expect(await (await GET(request(owner))).json()).toMatchObject({ profile: { age } });
   });
 
   it("updates current research data without changing another participant", async () => {
