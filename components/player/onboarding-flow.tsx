@@ -417,7 +417,7 @@ export function OnboardingFlow() {
             <p>อ่านข้อมูลในเอกสารนี้ให้ครบก่อนตัดสินใจเข้าร่วม</p>
             <div className="player-system-note">
               <strong>ก่อนเปิดแฟ้มคดี</strong>
-              <p>โครงการเปิดรับผู้เข้าร่วมที่มีอายุ {notice.minimumParticipantAge} ปีขึ้นไป</p>
+              <p>กรอกอายุของคุณตามจริง ไม่มีอายุขั้นต่ำในการเข้าเล่น</p>
             </div>
             <label className="player-consent-control">
             <input

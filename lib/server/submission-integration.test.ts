@@ -388,6 +388,18 @@ describe("onboarding saves personal data and resumes without writing consent aga
     const foreign = await (await getQuestionnaire(request("GET", undefined, stranger), routeContext)).json() as { sessionId: unknown };
     expect(foreign.sessionId).not.toBe(form.sessionId);
   });
+  it.each([0, 12, 17])("completes first-use onboarding and saves age %s", async age => {
+    const user = `qa-onboarding-age-${age}`;
+    await env.DB.prepare('INSERT INTO "user"(id,name,email,emailVerified,createdAt,updatedAt) VALUES (?,?,?,1,0,0)').bind(user,"Synthetic QA",`${user}@example.test`).run();
+    await consent(request("POST", { consentVersion, dataNoticeVersion, researchParticipation: true, aiChatUploadConsent: false }, user));
+    const form = await (await startQuestionnaire(request("POST", undefined, user), routeContext)).json() as { sessionId:string; questionnaire:{questions:{id:string;key:string;type:string;options:{value:string}[]}[]} };
+    for (const q of form.questionnaire.questions) {
+      const value = q.key === "age" ? String(age) : q.type === "scale" ? 3 : q.type === "single" ? q.options[0].value : q.type === "multi" ? [q.options[0].value] : "Synthetic QA";
+      expect((await answer(request("PUT", { questionId:q.id,value },user),sessionContext(form.sessionId))).status).toBe(200);
+    }
+    expect((await complete(request("POST",undefined,user),sessionContext(form.sessionId))).status).toBe(200);
+    expect(await (await getResearchProfile(request("GET",undefined,user))).json()).toMatchObject({profile:{age}});
+  });
   it.each([
     "D1_ERROR: D1 DB is overloaded. Requests queued for too long.",
     "D1_ERROR: Network connection lost.",

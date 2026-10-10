@@ -208,8 +208,8 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
   const ageText = asOptionalText(answers.get("age"));
   const age = ageText && /^\d{1,3}$/.test(ageText) ? Number(ageText) : null;
 
-  if (!age || age > 120 || age < participant.minimumParticipantAge) {
-    return noStoreResponse({ code: "AGE_NOT_ELIGIBLE" }, 400);
+  if (age === null || age > 120 || age < 0) {
+    return noStoreResponse({ code: "INVALID_AGE" }, 400);
   }
 
   const scienceFieldsInterest = {
