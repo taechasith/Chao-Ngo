@@ -24,7 +24,8 @@ export class D1FinalizationCoordinator extends DurableObject<CloudflareEnv> {
     super(ctx, env);
     ctx.blockConcurrencyWhile(async () => {
       ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS upload_leases (id TEXT PRIMARY KEY, cost INTEGER NOT NULL, expires INTEGER NOT NULL, submission_id TEXT NOT NULL, bytes INTEGER NOT NULL, claimed INTEGER NOT NULL DEFAULT 0)");
-      ctx.storage.sql.exec("DELETE FROM upload_leases WHERE expires <= ?", Date.now());
+      // A restarted instance has no surviving upload body to account for.
+      ctx.storage.sql.exec("DELETE FROM upload_leases WHERE expires <= ? OR claimed = 1", Date.now());
       // Persist upload permits so a restart cannot oversubscribe memory or database work.
       for (const row of ctx.storage.sql.exec<{ id: string; cost: number; expires: number }>("SELECT id,cost,expires FROM upload_leases")) {
         const releaseFile = await this.fileAdmission.acquire(row.cost);
@@ -35,7 +36,12 @@ export class D1FinalizationCoordinator extends DurableObject<CloudflareEnv> {
   }
 
   private trackLease(id: string, release: () => void, expires: number) {
-    this.leases.set(id, { release, timer: setTimeout(() => this.releaseLease(id), Math.max(1, expires - Date.now())) });
+    this.leases.set(id, { release, timer: setTimeout(() => {
+      const row = this.ctx.storage.sql.exec<{ claimed: number }>("SELECT claimed FROM upload_leases WHERE id=?", id).toArray()[0];
+      // Once claimed, only the upload's finally block may release its memory.
+      // A slow connection must not let another file into the same occupied slot.
+      if (row?.claimed !== 1) this.releaseLease(id);
+    }, Math.max(1, expires - Date.now())) });
   }
 
   private releaseLease(id: string) {

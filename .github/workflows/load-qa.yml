@@ -1,8 +1,6 @@
 name: D1 capacity 300-player Cloudflare QA
 
 on:
-  push:
-    branches: [codex/d1-capacity-all-ages]
   workflow_dispatch:
 
 permissions:
