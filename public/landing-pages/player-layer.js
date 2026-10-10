@@ -52,4 +52,38 @@
   document.body.prepend(skip);
   const content = document.getElementById("top");
   if (content) content.tabIndex = -1;
+
+  const credit = document.querySelector(".credit-footer");
+  if (credit) {
+    const signal = document.createElement("button");
+    signal.type = "button";
+    signal.className = "chao-archive-signal";
+    signal.textContent = "Easter Egg";
+    credit.append(signal);
+
+    let active = false;
+    signal.addEventListener("click", () => {
+      if (active) return;
+      active = true;
+      const dialog = document.createElement("dialog");
+      dialog.className = "chao-archive-dialog";
+      dialog.setAttribute("aria-label", "คุณพบข้อความลับจากผู้พัฒนาแล้ว");
+      dialog.innerHTML = '<button class="chao-archive-close" type="button" aria-label="ปิดภาพลับ">×</button><img src="/images/archive-signal.png" width="1414" height="2000" alt="หาเจอแจก 500 คะแนน — Dev ใจดี" decoding="async"><p class="chao-archive-note">เจอแล้ว tag story มาที่ ig : <a href="https://www.instagram.com/tnp_ybp/" target="_blank" rel="noopener noreferrer">tnp_ybp ↗</a><strong>รับแค่ 20 คนแรก</strong></p>';
+      const previousOverflow = document.body.style.overflow;
+      const close = () => dialog.close();
+      dialog.querySelector("button").addEventListener("click", close);
+      dialog.addEventListener("click", (event) => {
+        if (event.target === dialog) close();
+      });
+      dialog.addEventListener("close", () => {
+        dialog.remove();
+        document.body.style.overflow = previousOverflow;
+        active = false;
+        signal.focus({ preventScroll: true });
+      }, { once: true });
+      document.body.append(dialog);
+      dialog.showModal();
+      document.body.style.overflow = "hidden";
+    });
+  }
 })();
