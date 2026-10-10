@@ -15,7 +15,9 @@ const internalOrigin = "https://admission.internal";
 /** The existing binding/class is retained so deployments do not create a second queue. */
 export class D1FinalizationCoordinator extends DurableObject<CloudflareEnv> {
   private admission = new RequestAdmission(databaseRequestCapacity, 1024);
-  private fileAdmission = new RequestAdmission(uploadMemoryCapacity, 512, 120_000);
+  // A simultaneous cohort can take several minutes to drain, especially with
+  // 20 MB PDFs. The wait holds only a tiny reservation request, never file bytes.
+  private fileAdmission = new RequestAdmission(uploadMemoryCapacity, 512, 300_000);
   private leases = new Map<string, { release: () => void; timer: ReturnType<typeof setTimeout> }>();
 
   constructor(ctx: DurableObjectState, env: CloudflareEnv) {

@@ -1,4 +1,5 @@
 "use client";
+import { fetchWithDatabaseRetry } from "../../lib/client/database-retry.mjs";
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
@@ -76,7 +77,7 @@ export function ResearchProfileEditor() {
     const nextProfile = pendingSkill ? { ...draft, personalSkills: [...draft.personalSkills, pendingSkill] } : draft;
     setSaving(true); setMessage("");
     try {
-      const response = await fetch("/api/player-research-profile", { method: "PATCH", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(nextProfile) });
+      const response = await fetchWithDatabaseRetry("/api/player-research-profile", { method: "PATCH", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(nextProfile) });
       if (!response.ok) throw new Error(response.status === 429 ? "บันทึกบ่อยเกินไป กรุณารอสักครู่" : response.status === 400 ? "ข้อมูลไม่ถูกต้อง ตรวจอายุและคำตอบอีกครั้ง" : "บันทึกข้อมูลไม่ได้ กรุณาลองอีกครั้ง");
       const payload = await response.json() as { profile: ResearchProfile };
       setProfile(payload.profile); setEditing(false); setSkillInput(""); setMessage("บันทึกข้อมูลแล้ว");

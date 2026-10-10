@@ -3,6 +3,7 @@ import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {spawn,spawnSync} from 'node:child_process';
 import {randomUUID,randomBytes,createHmac,createHash} from 'node:crypto';
 import {performance} from 'node:perf_hooks';
+import {fetchWithDatabaseRetry} from '../lib/client/database-retry.mjs';
 import {openAsBlob} from 'node:fs';
 const account='c24fed68f8dc59cc339bd821d215bba8',api='https://api.cloudflare.com/client/v4';
 const run=process.env.GITHUB_RUN_ID||'manual';
@@ -33,7 +34,7 @@ let inflight=0,peak=0,r2Slots=0;const r2Waiters=[];
 async function withR2Slot(work){if(r2Slots>=10)await new Promise(resolve=>r2Waiters.push(resolve));else r2Slots++;try{return await work();}finally{const next=r2Waiters.shift();if(next)next();else r2Slots--;}}
 async function request(user,path,method='GET',body,phaseName){
  const begin=performance.now();inflight++;peak=Math.max(peak,inflight);
- try {const r=await fetch(origin+path,{method,headers:{Origin:origin,...(user?{Cookie:user.cookie,...(path.endsWith('/uploads')&&user.uploadPermit?{'X-Upload-Permit':user.uploadPermit}:{})}:{}),...(body&&!(body instanceof FormData)?{'Content-Type':'application/json'}:{})},body:body instanceof FormData?body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(path.endsWith('/uploads/admission')?150000:45000)});
+ try {const r=await fetchWithDatabaseRetry(origin+path,{method,headers:{Origin:origin,...(user?{Cookie:user.cookie,...(path.endsWith('/uploads')&&user.uploadPermit?{'X-Upload-Permit':user.uploadPermit}:{})}:{}),...(body&&!(body instanceof FormData)?{'Content-Type':'application/json'}:{})},body:body instanceof FormData?body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(path.endsWith('/uploads/admission')?330000:45000)},{fetcher:(input,init)=>fetch(input,{...init,signal:AbortSignal.timeout(path.endsWith('/uploads/admission')?330000:45000)}),onRetry:attempt=>(report.databaseRetries??=[]).push({phase:phaseName||report.phase,user:user?.id,path:path.replace(/[a-f0-9-]{36}/g,':id'),method,status:503,code:'DATABASE_BUSY',attempt})});
  const raw=await r.text();const payload=(()=>{try{return JSON.parse(raw)}catch{return null}})();report.requests.push({phase:phaseName||report.phase,user:user?.id,path:path.replace(/[a-f0-9-]{36}/g,':id'),status:r.status,ms:Math.round(performance.now()-begin),code:payload?.code,serverTiming:r.headers.get("server-timing"),colo:r.headers.get("cf-ray")?.split("-").at(-1),...([404,500].includes(r.status)?{diagnostic:raw.slice(0,220),contentType:r.headers.get('content-type')}: {})});return {status:r.status,body:payload};}
  catch(e){report.requests.push({phase:phaseName||report.phase,user:user?.id,status:'network-error',ms:Math.round(performance.now()-begin),error:e.name,diagnostic:String(e.cause?.code??e.cause?.message??e.message).slice(0,200)});throw new Error(e.name,{cause:e});}
  finally{inflight--;}
