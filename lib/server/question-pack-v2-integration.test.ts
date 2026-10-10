@@ -9,6 +9,7 @@ import { PUT as answer } from '../../app/api/questionnaire-sessions/[sessionId]/
 import { POST as complete } from '../../app/api/questionnaire-sessions/[sessionId]/complete/route';
 import { POST as draft } from '../../app/api/submissions/route';
 import { POST as finalize } from '../../app/api/submissions/[submissionId]/finalize/route';
+import { recalculateCompletionForUser } from './completion';
 import { getSubmissionRequirements } from './submissions/requirements';
 vi.mock('./research-access', () => ({requireResearchParticipant: async (request: Request) => request.headers.get('x-test-user') ? {userId:request.headers.get('x-test-user'), minimumParticipantAge:0} : Response.json({code:'UNAUTHENTICATED'}, {status:401})}));
 vi.mock('./request-limits', () => ({isWithinPlayerMutationLimit:async()=>true}));
@@ -44,6 +45,12 @@ it('creates 13 versioned instruments, preserving historical answers and disablin
   expect(await env.DB.prepare("SELECT value_json FROM responses WHERE id='cq2-old-answer'").first()).toEqual({value_json:'"Original answer"'});
   const form=await (await read(req('GET'),ctx(`pretest:${cases[0]}`))).json();
   expect(JSON.stringify(form)).not.toMatch(/scoring_json|source_note|correctAnswer|advisor_review_status/);
+});
+it('does not revoke completion for accepted legacy K.A. receipts with no posttest',async()=>{
+  await env.DB.prepare('INSERT INTO "user"(id,name,email,emailVerified,createdAt,updatedAt) VALUES (?,?,?,1,0,0)').bind('cq2-legacy','QA','legacy@example.test').run();
+  await env.DB.prepare("INSERT INTO questionnaire_sessions(id,user_id,questionnaire_id,completed_at) VALUES ('cq2-frozen-session','cq2-legacy','questionnaire-submission-ka-maimee-v3',CURRENT_TIMESTAMP)").run();
+  await env.DB.prepare("INSERT INTO submissions(id,user_id,subgame_id,questionnaire_session_id,status) VALUES ('cq2-frozen-receipt','cq2-legacy','subgame-ka-fintech','cq2-frozen-session','accepted')").run();
+  expect((await recalculateCompletionForUser('cq2-legacy')).completedSubgameIds).toContain('subgame-ka-fintech');
 });
 it('onboarding accepts the new demographics, saves age 12 and recommends a case',async()=>{
   const form=await (await start(req(),ctx('pregame'))).json() as Form;
