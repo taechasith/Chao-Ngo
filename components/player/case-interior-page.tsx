@@ -27,7 +27,7 @@ export async function CaseInteriorPage({ pageTitle, eyebrow, title, subtitle, de
   const publication = await getCasePublication(subgameId);
   if (publication !== "playable") return <PlayerShell pageTitle={pageTitle}><section className="player-panel"><span className="player-eyebrow">สถานะแฟ้มคดี</span><h1 className="mt-3 text-2xl">{publication === "closed" ? "แฟ้มนี้ยังไม่เปิดให้เล่น" : "ยังตรวจสอบสถานะแฟ้มไม่ได้"}</h1><p className="mt-3">กลับไปเลือกแฟ้มที่เปิดให้สำรวจ หรือลองใหม่ภายหลัง</p><Link className="player-button mt-4" href="/play">กลับไปยังแฟ้มคดี</Link></section></PlayerShell>;
   const [timeline, assistantUrl] = await Promise.all([getPlayerTimeline(), getPlayerAssistantUrl("node-zone")]);
-  const nodes = timeline?.filter(node => node.slug === timelineSlug || node.slug === "pre-case") ?? null;
+  const nodes = timeline?.filter(node => node.slug === timelineSlug || node.slug === "pre-case" || node.slug === "post-case") ?? null;
   const activeNode = nodes?.find((node) => node.slug === timelineSlug);
 
   return (
