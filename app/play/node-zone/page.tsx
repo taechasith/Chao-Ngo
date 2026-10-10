@@ -1,12 +1,9 @@
-import { AiCompanionNotice } from "../../../components/player/ai-companion-notice";
 import Image from "next/image";
 import Link from "next/link";
 
 import { AppShell } from "../../../components/player/app-shell";
 import { StatusBadge } from "../../../components/player/panel";
-import { EvidenceDesk } from "../../../components/player/evidence-desk";
 import { getPlayerCatalog } from "../../../lib/server/content/player-catalog";
-import { getPlayerTimeline, getPlayerAssistantUrl } from "../../../lib/server/content/player-evidence";
 import { InvestigativeAction, InvestigativeActionMarker } from "../../../components/player/investigative-action";
 
 const cases = [
@@ -31,7 +28,7 @@ const cases = [
 ];
 
 export default async function NodeZonePage() {
-  const [nodes, catalog, assistantUrl] = await Promise.all([getPlayerTimeline(), getPlayerCatalog(), getPlayerAssistantUrl("node-zone")]);
+  const catalog = await getPlayerCatalog();
   const game = catalog?.find(item => item.slug === "node-zone");
   const published = cases.filter(item => game?.status === "playable" && game.cases.some(entry => entry.id === item.id && entry.status === "playable"));
   return (
@@ -43,7 +40,7 @@ export default async function NodeZonePage() {
           <p>สองคดีอยู่ในแฟ้มเดียวกัน เริ่มจากเรื่องที่คุณอยากรู้ได้เลย</p>
         </header>
 
-        <AiCompanionNotice href={assistantUrl} guideTarget="node-zone-ai" />
+        <p className="text-sm leading-7 text-white/70">เลือกคดีก่อน แล้วตอบแบบทดสอบสั้น ๆ ก่อนเปิดหลักฐานและใช้ AI คู่คิด</p>
 
         <section aria-label="เลือกคดีย่อย" className="player-route-index" data-player-reveal="primary">
           {published.map((item) => (
@@ -61,7 +58,7 @@ export default async function NodeZonePage() {
           {!published.length ? <p className="player-panel" role="status">{catalog === null ? "ยังโหลดสถานะแฟ้มไม่ได้ ลองใหม่ภายหลัง" : "ยังไม่มีคดีย่อยที่เปิดให้เล่น"}</p> : null}
         </section>
 
-        {published.length ? <EvidenceDesk guideScope="node-zone" nodes={nodes} /> : null}
+
 
 
         <div data-guide="node-zone-submit"><InvestigativeAction href="/submit">ส่งคำตอบเมื่อพร้อม</InvestigativeAction></div>

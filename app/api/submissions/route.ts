@@ -13,6 +13,7 @@ import {
   type SubmissionRequirements,
 } from "../../../lib/server/submissions/requirements";
 
+import { hasRequiredCasePretest } from "../../../lib/server/questionnaires/pretest";
 import { refreshActiveSession } from "../../../lib/server/questionnaires/live-updates";
 
 export const dynamic = "force-dynamic";
@@ -219,9 +220,27 @@ async function handlePOST(request: Request): Promise<Response> {
   if (!isSafeSubmissionSubgameId(subgameId)) return response({ code: "INVALID_SUBGAME" }, 400);
 
   const existing = await getDraft(participant.userId, subgameId);
+  if ((!existing || existing.status === "draft") && !(await hasRequiredCasePretest(env.DB, participant.userId, subgameId))) {
+    return response({ code: "CASE_PRETEST_REQUIRED" }, 409);
+  }
   if (existing) {
     if (existing.status === "draft") {
       for (const form of [existing.answerForm, existing.posttestForm]) if (form) await refreshActiveSession(env.DB, participant.userId, form.sessionId);
+      // Older K.A. drafts had no posttest. Attach the new instrument atomically on resume.
+      const requirements = await getSubmissionRequirements(env.DB, subgameId);
+      if (requirements.requiresPosttest && !existing.posttestForm) {
+        const questionnaireId = await publishedQuestionnaireId(`postgame:${subgameId}`);
+        if (!questionnaireId) return response({ code: "SUBMISSION_FORM_UNAVAILABLE" }, 503);
+        const sessionId = crypto.randomUUID();
+        await env.DB.batch([
+          env.DB.prepare(`INSERT INTO questionnaire_sessions(id,user_id,questionnaire_id)
+            SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM submissions WHERE id=? AND status='draft' AND posttest_session_id IS NULL)`)
+            .bind(sessionId, participant.userId, questionnaireId, existing.submissionId),
+          env.DB.prepare(`UPDATE submissions SET posttest_session_id=?,updated_at=CURRENT_TIMESTAMP
+            WHERE id=? AND user_id=? AND status='draft' AND posttest_session_id IS NULL`)
+            .bind(sessionId,existing.submissionId,participant.userId),
+        ]);
+      }
       return response({ submission: await getDraft(participant.userId, subgameId), status: "resumed" });
     }
     return response({ submission: existing, status: "resumed" });

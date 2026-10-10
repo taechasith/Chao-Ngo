@@ -8,11 +8,11 @@ import type { ResearchProfile } from "../../lib/server/research-profile";
 
 const educationOptions = [
   ["lower_secondary", "ม.ต้น"], ["upper_secondary", "ม.ปลาย"],
-  ["vocational", "ปวช.–ปวส."], ["bachelor", "ปริญญาตรี"], ["other", "อื่น ๆ"],
+  ["vocational", "ปวช.–ปวส."], ["bachelor", "ปริญญาตรี"], ["postgraduate", "สูงกว่าปริญญาตรี"], ["not_studying", "ไม่ได้อยู่ระหว่างการศึกษา"], ["prefer_not_to_say", "ไม่ประสงค์ระบุ"], ["other", "อื่น ๆ"],
 ] as const;
 const genderOptions = [
   ["male", "ชาย"], ["female", "หญิง"],
-  ["nonbinary_or_self_described", "ไม่ตรงกับตัวเลือกชาย/หญิง"], ["prefer_not_to_say", "ไม่ประสงค์ระบุ"],
+  ["nonbinary_or_self_described", "ไม่ตรงกับตัวเลือกชาย/หญิง"], ["other", "อื่น ๆ"], ["prefer_not_to_say", "ไม่ประสงค์ระบุ"],
 ] as const;
 const fields = [
   ["quantum", "ฟิสิกส์ควอนตัม"], ["space", "วิทยาศาสตร์อวกาศ"],

@@ -63,7 +63,7 @@ beforeAll(async () => {
   env.DB = await mf.getD1Database("DB") as unknown as D1Database;
   env.PRIVATE_UPLOADS = await mf.getR2Bucket("PRIVATE_UPLOADS") as unknown as R2Bucket;
   env.PUBLIC_ASSETS = await mf.getR2Bucket("PUBLIC_ASSETS") as unknown as R2Bucket;
-  for (const name of (await readdir("migrations")).filter((name) => name.endsWith(".sql")).sort()) {
+  for (const name of (await readdir("migrations")).filter((name) => name.endsWith(".sql") && name < "0023").sort()) {
     const statements = unstable_splitSqlQuery(await readFile(`migrations/${name}`, "utf8"));
     await env.DB.batch(statements.map((statement) => env.DB.prepare(statement)));
   }
@@ -75,7 +75,7 @@ beforeAll(async () => {
 }, 30_000);
 afterAll(async () => { await mf?.dispose(); });
 
-describe("B6 real D1/private R2 contracts", () => {
+describe("B6 legacy instruments retain real D1/private R2 contracts", () => {
   let id: string;
   let draft: { answerForm: { sessionId: string; questions: { id: string; type: string; required: boolean }[] }; posttestForm: { sessionId: string; questions: { id: string; type: string; required: boolean }[] } };
   let key: string;

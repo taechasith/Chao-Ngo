@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { scaleDescription } from "../../lib/question-pack";
 import { compatibleQuestion, useLiveQuestionnaire, type LiveForm } from "../../lib/client/use-live-questionnaire";
 import { useAnswerAutosave } from "../../lib/client/use-answer-autosave";
 import { kaRouteForSubgameId } from "../../lib/ka-casefiles";
@@ -76,7 +77,7 @@ type Recommendation = {
   subgameId: string;
 };
 
-const questionGroupStarts = [0, 4, 6, 11];
+const legacyQuestionGroupStarts = [0, 4, 6, 11];
 
 function isChoiceOption(value: unknown): value is ChoiceOption {
   return (
@@ -166,6 +167,7 @@ export function OnboardingFlow() {
   const answersRef = useRef<Record<string, unknown>>({});
   const { saver, status: autosaveState, pendingCount } = useAnswerAutosave(setMessage);
   const [initializing, setInitializing] = useState(true);
+  const questionGroupStarts = useMemo(() => instrument?.version.startsWith("CQ-ADMIN-2.0") ? [0, 4, 6, 8] : legacyQuestionGroupStarts, [instrument?.version]);
 
   const live = useLiveQuestionnaire({forms:instrument && sessionId ? [{...instrument,sessionId,questions,completed:false,responses:answers}] : [],enabled:step>=0 && saveState!=="saving",saver,
     onUpdate:(old,next,pending)=>{
@@ -182,7 +184,7 @@ export function OnboardingFlow() {
       questionGroupStarts
         .map((start, index) => questions.slice(start, questionGroupStarts[index + 1]))
         .filter((group) => group.length > 0),
-    [questions],
+    [questions, questionGroupStarts],
   );
 
   useEffect(() => {
@@ -237,7 +239,8 @@ export function OnboardingFlow() {
       // Completed without a recommendation should still offer the case index, not edit a locked form.
       setStep(-3);
     } else {
-      const groups = questionGroupStarts.map((start, index) => payload.questionnaire.questions.slice(start, questionGroupStarts[index + 1])).filter(group => group.length);
+      const starts = payload.questionnaire.version.startsWith("CQ-ADMIN-2.0") ? [0, 4, 6, 8] : legacyQuestionGroupStarts;
+      const groups = starts.map((start, index) => payload.questionnaire.questions.slice(start, starts[index + 1])).filter(group => group.length);
       const firstIncomplete = groups.findIndex(group => !group.every(question => isQuestionAnswered(question, initial[question.id])));
       setStep(firstIncomplete === -1 ? groups.length - 1 : firstIncomplete);
       void saver.flush(payload.sessionId);
@@ -627,7 +630,7 @@ function QuestionField({
             </label>
           ))}
         </div>
-        <div className="mt-2 flex justify-between text-xs text-white/50"><span>น้อย</span><span>มาก</span></div>
+        <p className="mt-2 text-xs leading-6 text-white/60">{scaleDescription(question.options) || "น้อย → มาก"}</p>
       </fieldset>
     );
   }

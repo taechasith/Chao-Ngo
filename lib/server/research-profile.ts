@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 export const researchFields = ["quantum", "space", "psychology", "fintech", "biotech"] as const;
-export const educationLevels = ["lower_secondary", "upper_secondary", "vocational", "bachelor", "other"] as const;
-export const genderValues = ["male", "female", "nonbinary_or_self_described", "prefer_not_to_say"] as const;
+export const educationLevels = ["lower_secondary", "upper_secondary", "vocational", "bachelor", "postgraduate", "not_studying", "other", "prefer_not_to_say"] as const;
+export const genderValues = ["male", "female", "nonbinary_or_self_described", "other", "prefer_not_to_say"] as const;
 
 const rating = z.number().int().min(1).max(5);
 const skill = z.string().trim().min(2).max(40);

@@ -1,5 +1,6 @@
 "use client";
 
+import { caseRoutes, scaleDescription } from "../../lib/question-pack";
 import { useAiPreparation } from "../../lib/client/use-ai-preparation";
 import { type AiPreparation } from "../../lib/ai-preparation";
 import { AiCompanionNotice } from "./ai-companion-notice";
@@ -21,7 +22,7 @@ type FormQuestion = {
   type: string;
 };
 
-type QuestionForm = {
+export type QuestionForm = {
   id: string;
   key: string;
   completed: boolean;
@@ -145,6 +146,7 @@ function thaiError(code: string): string {
     QUESTIONNAIRE_UPDATED: "แอดมินแก้ไขคำถามแล้ว กรุณารออัปเดตและทบทวนคำตอบก่อนส่งอีกครั้ง",
     AI_COMPANION_REQUIRED: "ต้องใช้ AI คู่คิดที่กำหนด และยืนยันการใช้งานด้านบนก่อนส่งคำตอบ",
     AI_CHAT_LINK_REQUIRED: "กรุณาใส่ลิงก์แชร์บทสนทนากับ AI ที่ขึ้นต้นด้วย https://",
+    CASE_PRETEST_REQUIRED: "กรุณาตอบแบบทดสอบก่อนเล่นของคดีนี้ก่อนเปิดหน้าส่งคำตอบ",
     SUBMISSION_ANSWERS_INCOMPLETE: "กรุณาตอบคำถามที่จำเป็นให้ครบก่อนส่ง",
     DATABASE_BUSY: "ระบบบันทึกไม่พร้อมชั่วคราว กรุณารอสักครู่แล้วลองอีกครั้ง",
     ACKNOWLEDGEMENT_REQUIRED: "กรุณายืนยันเงื่อนไขการใช้ไฟล์ PDF ก่อนอัปโหลด",
@@ -557,7 +559,7 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
             </button>
           ))}
         </div>
-        {message ? <p aria-live="polite" className="text-sm text-red-200">{message} <Link className="underline" href="/login">เข้าสู่ระบบ</Link></p> : null}
+        {message ? <p aria-live="polite" className="text-sm text-red-200">{message} {subgameId && caseRoutes[subgameId] ? <Link className="underline" href={caseRoutes[subgameId]}>กลับไปเปิดคดีและทำแบบทดสอบก่อนเล่น</Link> : <Link className="underline" href="/login">เข้าสู่ระบบ</Link>}</p> : null}
       </div>
     );
   }
@@ -675,7 +677,7 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
         <Panel className="player-submission-panel" data-guide="submit-ai-pdf" id="submission-stage-ai-pdf">
           <span className="player-eyebrow">REQUIRED / AI CHAT PDF</span>
           <h2 className="mt-2 font-display text-2xl text-white">ไฟล์ PDF บทสนทนากับ AI</h2>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-white/70">ไฟล์จะถูกเก็บในพื้นที่ส่วนตัวเพื่อวิเคราะห์งานวิจัยเท่านั้น จำกัดขนาดไม่เกิน 20 MB และไม่แสดงผ่านคลังไฟล์สาธารณะ</p>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-white/70">ไฟล์จะถูกเก็บในพื้นที่ส่วนตัวเพื่อวิเคราะห์งานวิจัยเท่านั้น กรุณาตรวจและลบข้อมูลส่วนบุคคลหรือข้อมูลลับของตนเองและผู้อื่นก่อนอัปโหลด จำกัดขนาดไม่เกิน 20 MB และไม่แสดงผ่านคลังไฟล์สาธารณะ</p>
           <figure className="mt-5 max-w-sm border border-white/15 bg-black/25 p-2">
             <img alt="ตัวอย่างการบันทึกบทสนทนา AI เป็น PDF" className="aspect-[16/9] w-full object-cover object-top" src="/ai-chat-pdf-instructions.png" />
             <figcaption className="px-1 pt-2 text-xs leading-5 text-white/55">บันทึกบทสนทนากับ AI เป็น PDF แล้วเลือกไฟล์นั้นด้านล่าง</figcaption>
@@ -715,7 +717,7 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
         <span className="player-eyebrow">FINAL / ตรวจสอบและส่ง</span>
         <h2>พร้อมยืนยันสิ่งที่คุณคิดแล้วหรือยัง?</h2>
         <p>{finalRequiresAi
-          ? submission.requirements.requiresPosttest ? "ตรวจคำตอบและ post-test ให้ครบ พร้อมแนบไฟล์ PDF บทสนทนากับ AI" : "ตรวจคำตอบทั้ง 5 ข้อ ระดับความมั่นใจ และ PDF บทสนทนากับ AI ให้ครบก่อนส่ง"
+          ? submission.requirements.requiresPosttest ? "ตรวจคำตอบและ post-test ให้ครบ พร้อมแนบไฟล์ PDF บทสนทนากับ AI" : "ตรวจคำตอบของคดี ระดับความมั่นใจ และ PDF บทสนทนากับ AI ให้ครบก่อนส่ง"
           : submission.requirements.requiresAnswerForm ? "ตรวจคำตอบและไฟล์ PDF บทสนทนากับ AI ให้ครบ แล้วกดส่งคำตอบ" : "กรอกคำตอบในระบบให้ครบ แล้วแนบไฟล์ PDF บทสนทนากับ AI ก่อนส่งคำตอบ"}</p>
         {finalRequiresAi ? <p className="player-upload-state" role="status">{submission.uploads.aiChatPdf ? `ไฟล์ AI chat PDF: ${submission.uploads.aiChatPdf.original_name}` : "ยังไม่ได้แนบไฟล์ PDF"}</p> : null}
         {!ai.aiCompanionUsed ? <p className="player-upload-state">ยังไม่ได้ยืนยันการใช้ AI คู่คิดที่กำหนด <a className="underline" href="#submission-stage-ai-required">กลับไปยืนยันด้านบน</a></p> : null}
@@ -729,7 +731,7 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
   );
 }
 
-function QuestionnairePanel({
+export function QuestionnairePanel({
   answers,
   form,
   errorMessage,
@@ -761,11 +763,11 @@ function QuestionnairePanel({
   return (
     <Panel className="player-questionnaire" data-guide={guideTarget} id={sectionId}>
       <div className="player-questionnaire-heading">
-        <div><span className="player-eyebrow">{stage} / {stage === "02" ? "คำตอบของคุณ" : "POST-TEST"}</span><h2>{form.title}</h2></div>
+        <div><span className="player-eyebrow">{stage} / {stage === "02" ? "คำตอบของคุณ" : stage === "PRE" ? "ก่อนเล่น" : "POST-TEST"}</span><h2>{form.title}</h2></div>
         <div aria-label={`กรอกแล้ว ${answeredCount} จาก ${questionCount} ข้อ`} className="player-questionnaire-count"><strong>{String(answeredCount).padStart(2, "0")}</strong><span>/ {String(questionCount).padStart(2, "0")} ข้อที่กรอก</span></div>
       </div>
       <div aria-label={`ความคืบหน้าการกรอก ${answeredCount} จาก ${questionCount} ข้อ`} aria-valuemax={questionCount} aria-valuemin={0} aria-valuenow={answeredCount} className="player-questionnaire-progress" role="progressbar"><span style={{ width: `${questionCount ? answeredCount / questionCount * 100 : 0}%` }} /></div>
-      <p className="player-questionnaire-help">{form.questions.some(question => question.key === "ai_chat_link") ? "ตอบคำถามทั้ง 5 ข้อ พร้อมใส่ลิงก์ AI ในส่วนที่ 6 ด้านล่าง คำตอบบันทึกอัตโนมัติ" : "อ่านคำถามทีละข้อ แล้วบันทึกแบบสอบถามเมื่อพร้อม"}</p>
+      <p className="player-questionnaire-help">{stage === "03" && form.version.startsWith("CQ-ADMIN-2.0") ? "คำถามต่อไปนี้ใช้ศึกษาความเข้าใจหลังสืบสวน โปรดตอบด้วยความเข้าใจของตัวเองโดยไม่เปิด AI หรือเอกสารช่วยระหว่างทำแบบทดสอบ หากไม่ทราบเลือก “ยังไม่แน่ใจ” ได้" : form.questions.some(question => question.key === "ai_chat_link") ? "ตอบคำถามทั้ง 5 ข้อ พร้อมใส่ลิงก์ AI ในส่วนที่ 6 ด้านล่าง คำตอบบันทึกอัตโนมัติ" : "อ่านคำถามทีละข้อ แล้วบันทึกแบบสอบถามเมื่อพร้อม"}</p>
       <div className="player-question-list">
         {visibleQuestions.map((question, index) => {
           const required = question.required || requiredQuestionKeys.includes(question.key);
@@ -775,7 +777,7 @@ function QuestionnairePanel({
             <fieldset aria-labelledby={promptId} className="player-question text-sm leading-6 text-white/85" data-answered={answered} disabled={complete} key={question.id}>
               <div className="player-question-heading" id={promptId}><span className="player-question-number">Q{String(index + 1).padStart(2, "0")}</span><span className="player-question-prompt">{question.promptTh}{required ? <span className="ml-1 text-orange-200">*</span> : null}</span></div>
               {question.key === "ai_chat_link" ? <p className="text-sm leading-6 text-white/65">กดแชร์บทสนทนาใน AI ที่คุณใช้ แล้วคัดลอกลิงก์ https:// มาใส่ที่นี่ ลิงก์นี้จะไม่เผยแพร่สาธารณะ ใช้สำหรับงานวิจัยโดยทีมที่ได้รับสิทธิ์เท่านั้น</p> : null}
-              {question.type === "scale" ? <p className="text-sm text-white/65">1 = มั่นใจน้อยที่สุด · 5 = มั่นใจมากที่สุด</p> : null}
+              {question.type === "scale" ? <p className="text-sm text-white/65">{scaleDescription(question.options) || "1 = มั่นใจน้อยที่สุด · 5 = มั่นใจมากที่สุด"}</p> : null}
               <span className="player-question-state">{answered ? "กรอกแล้ว" : required ? "รอคำตอบ" : "ข้ามได้"}</span>
               {question.type === "scale" ? (
                 <span className="grid grid-cols-5 gap-2">
@@ -814,7 +816,7 @@ function QuestionnairePanel({
         catch { setSaveError(true); }
         finally { setSaving(false); }
       }} type="button">
-        {complete ? "บันทึกแล้ว" : saving ? "กำลังบันทึก…" : "บันทึกแบบสอบถาม"}
+        {complete ? "บันทึกแล้ว" : saving ? "กำลังบันทึก…" : stage === "PRE" ? "บันทึกและเปิดแฟ้มคดี" : "บันทึกแบบสอบถาม"}
       </button>
     </Panel>
   );
