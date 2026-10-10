@@ -45,6 +45,20 @@ export class D1FinalizationCoordinator extends DurableObject<CloudflareEnv> {
     lease.release();
   }
 
+  private async runApplication(request: Request) {
+    const queuedAt = Date.now();
+    const release = await this.admission.acquire();
+    const startedAt = Date.now();
+    try {
+      const response = await application.fetch(request, this.env, {
+        waitUntil: this.ctx.waitUntil.bind(this.ctx), passThroughOnException() {},
+      } as ExecutionContext);
+      const measured = new Response(response.body, response);
+      measured.headers.append("Server-Timing", `admission;dur=${startedAt - queuedAt},application;dur=${Date.now() - startedAt}`);
+      return measured;
+    } finally { release(); }
+  }
+
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     try {
@@ -81,9 +95,7 @@ export class D1FinalizationCoordinator extends DurableObject<CloudflareEnv> {
         } finally { this.releaseLease(id!); }
       }
       if (isUploadAdmissionRequest(request)) {
-        const preflight = await this.admission.run(() => application.fetch(request, this.env, {
-          waitUntil: this.ctx.waitUntil.bind(this.ctx), passThroughOnException() {},
-        } as ExecutionContext));
+        const preflight = await this.runApplication(request);
         if (!preflight.ok) return preflight;
         const { admission } = await preflight.json() as { admission: { bytes: number; submissionId: string } };
         // Wait on a bodyless request. Pending files remain in the player's browser.
@@ -100,9 +112,7 @@ export class D1FinalizationCoordinator extends DurableObject<CloudflareEnv> {
           return Response.json({ permit: id }, { headers: { "Cache-Control": "no-store" } });
         } catch (error) { releaseDatabase?.(); releaseFile(); throw error; }
       }
-      return await this.admission.run(() => application.fetch(request, this.env, {
-        waitUntil: this.ctx.waitUntil.bind(this.ctx), passThroughOnException() {},
-      } as ExecutionContext));
+      return await this.runApplication(request);
     } catch (error) {
       if (error instanceof AdmissionBusyError || isRetryableD1Error(error)) return databaseBusyResponse();
       throw error;

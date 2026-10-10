@@ -34,7 +34,7 @@ async function withR2Slot(work){if(r2Slots>=10)await new Promise(resolve=>r2Wait
 async function request(user,path,method='GET',body,phaseName){
  const begin=performance.now();inflight++;peak=Math.max(peak,inflight);
  try {const r=await fetch(origin+path,{method,headers:{Origin:origin,...(user?{Cookie:user.cookie,...(path.endsWith('/uploads')&&user.uploadPermit?{'X-Upload-Permit':user.uploadPermit}:{})}:{}),...(body&&!(body instanceof FormData)?{'Content-Type':'application/json'}:{})},body:body instanceof FormData?body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(path.endsWith('/uploads/admission')?150000:45000)});
- const raw=await r.text();const payload=(()=>{try{return JSON.parse(raw)}catch{return null}})();report.requests.push({phase:phaseName||report.phase,user:user?.id,path:path.replace(/[a-f0-9-]{36}/g,':id'),status:r.status,ms:Math.round(performance.now()-begin),code:payload?.code,...([404,500].includes(r.status)?{diagnostic:raw.slice(0,220),contentType:r.headers.get('content-type')}: {})});return {status:r.status,body:payload};}
+ const raw=await r.text();const payload=(()=>{try{return JSON.parse(raw)}catch{return null}})();report.requests.push({phase:phaseName||report.phase,user:user?.id,path:path.replace(/[a-f0-9-]{36}/g,':id'),status:r.status,ms:Math.round(performance.now()-begin),code:payload?.code,serverTiming:r.headers.get("server-timing"),colo:r.headers.get("cf-ray")?.split("-").at(-1),...([404,500].includes(r.status)?{diagnostic:raw.slice(0,220),contentType:r.headers.get('content-type')}: {})});return {status:r.status,body:payload};}
  catch(e){report.requests.push({phase:phaseName||report.phase,user:user?.id,status:'network-error',ms:Math.round(performance.now()-begin),error:e.name,diagnostic:String(e.cause?.code??e.cause?.message??e.message).slice(0,200)});throw new Error(e.name,{cause:e});}
  finally{inflight--;}
 }
@@ -44,7 +44,7 @@ async function phase(name,pool,work){report.phase=name;peak=0;const begin=perfor
 try{
  const subdomain=(await cf(`/accounts/${account}/workers/subdomain`)).subdomain;
  if(!subdomain)throw new Error('Existing workers.dev subdomain unavailable');origin=`https://${name}.${subdomain}.workers.dev`;report.origin=origin;
- dbId=(await cf(`/accounts/${account}/d1/database`,'POST',{name:dbName,primary_location_hint:'apac'})).uuid;report.resources.databaseId=dbId;await persist();
+ const createdDatabase=await cf(`/accounts/${account}/d1/database`,'POST',{name:dbName,primary_location_hint:'apac'});dbId=createdDatabase.uuid;report.resources.databaseId=dbId;report.databaseLocation=createdDatabase.primary_location_hint;report.productionDatabaseMetadata=await cf(`/accounts/${account}/d1/database/420393d7-6abf-4a43-bc4d-4f5f94a5b7e9`);await persist();
  await cf(`/accounts/${account}/r2/buckets`,'POST',{name:bucketName});createdBucket=true;
  const base=JSON.parse((await readFile('wrangler.jsonc','utf8')).replace(/^\s*\/\/.*$/mg,''));
  const config={...base,name,routes:[],workers_dev:true,triggers:{crons:[]},vars:{BETTER_AUTH_URL:origin},d1_databases:[{binding:'DB',database_name:dbName,database_id:dbId,migrations_dir:'./migrations'}],r2_buckets:[{binding:'PUBLIC_ASSETS',bucket_name:bucketName},{binding:'PRIVATE_UPLOADS',bucket_name:bucketName}]};
@@ -78,6 +78,7 @@ try{
  delete report.phase;
  const unauth=await request(null,'/api/submissions');check(unauth.status,401,'Unauthenticated guard');check((await request(null,'/api/submissions/00000000-0000-4000-8000-000000000000/finalize','POST')).status,401,'Coordinator auth guard');
  const sanity=await request(users[0],'/api/auth/get-session');check(sanity.status,200,'Signed session sanity status');check(sanity.body?.user?.id,users[0].id,'Signed session sanity identity');
+ report.phase='sequential profile latency diagnostic';for(let i=0;i<3;i++)check((await request(users[i],'/api/player-research-profile')).status,409,'empty profile sanity');delete report.phase;
  const profile={age:25,educationLevel:'bachelor',gender:'prefer_not_to_say',institution:'SYNTHETIC QA NOT RESEARCH',scienceInterest:3,fieldInterests:{quantum:3,space:3,psychology:3,fintech:3,biotech:3},personalSkills:['QA testing']};
  await phase('300 concurrent profile writes and owner readback',users,async u=>{
   u.age=[0,12,17,25][Number(u.id.slice(-3))%4];const data={...profile,age:u.age,institution:u.id};check((await request(u,'/api/player-research-profile','PATCH',data)).status,200,'profile save');

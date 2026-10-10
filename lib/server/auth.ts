@@ -79,6 +79,8 @@ function createAuth() {
     secret: readiness.secret,
     trustedOrigins: readiness.baseURL ? [readiness.baseURL] : [],
     advanced: {
+      // Fetch the session and its user in one query without caching revocation.
+      database: { joins: true },
       ipAddress: {
         ipAddressHeaders: ["cf-connecting-ip", "x-forwarded-for"],
       },
