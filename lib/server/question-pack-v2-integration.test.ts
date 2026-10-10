@@ -39,6 +39,17 @@ beforeAll(async()=>{
   await env.DB.batch(unstable_splitSqlQuery(await readFile('migrations/0023_question_pack_v2.sql','utf8')).map(sql=>env.DB.prepare(sql)));
 },30000);
 afterAll(async()=>{await mf?.dispose();});
+it('returns a retryable response when D1 cannot load or start a pretest', async () => {
+  for (const handler of [read, start]) {
+    const database = env.DB;
+    env.DB = { prepare: () => { throw new Error('D1_ERROR: D1 DB is overloaded. Requests queued for too long.'); } } as unknown as D1Database;
+    try {
+      const response = await handler(req(handler === read ? 'GET' : 'POST'),ctx(`pretest:${cases[0]}`));
+      expect(response.status).toBe(503); expect(response.headers.get('Retry-After')).toBe('2');
+      expect(await response.json()).toEqual({code:'DATABASE_BUSY'});
+    } finally { env.DB = database; }
+  }
+});
 it('creates 13 versioned instruments, preserving historical answers and disabling candidate grading',async()=>{
   expect(await env.DB.prepare("SELECT COUNT(*) n FROM questionnaires WHERE id LIKE 'cq2-%' AND published=1").first()).toEqual({n:13});
   expect(await env.DB.prepare("SELECT COUNT(*) n FROM questions WHERE id LIKE 'cq2-%' AND scoring_json IS NULL").first()).toEqual({n:162});

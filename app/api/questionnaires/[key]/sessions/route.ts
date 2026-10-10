@@ -1,4 +1,5 @@
 import { hasRequiredCasePretest } from "../../../../../lib/server/questionnaires/pretest";
+import { withD1RetryableErrorHandling } from "../../../../../lib/server/d1-overload";
 import { env } from "cloudflare:workers";
 
 import { requireResearchParticipant } from "../../../../../lib/server/research-access";
@@ -101,7 +102,7 @@ async function getSavedResponses(sessionId: string): Promise<Record<string, unkn
   }, {});
 }
 
-export async function GET(request: Request, context: RouteContext): Promise<Response> {
+async function handleGET(request: Request, context: RouteContext): Promise<Response> {
   const participant = await requireResearchParticipant(request);
 
   if (participant instanceof Response) {
@@ -148,12 +149,12 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
     previousForms,
     completed: Boolean(session?.completed_at),
     recommendation,
-    responses: session ? await getSavedResponses(session.id) : {},
+    responses: form?.responses ?? {},
     sessionId: session?.id ?? null,
   });
 }
 
-export async function POST(request: Request, context: RouteContext): Promise<Response> {
+async function handlePOST(request: Request, context: RouteContext): Promise<Response> {
   if (!isSameOriginRequest(request)) return noStoreResponse({ code: "CROSS_ORIGIN_REQUEST" }, 403);
   const participant = await requireResearchParticipant(request);
 
@@ -237,3 +238,19 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     created ? 201 : 200,
   );
 }
+
+const diagnosticCodes = new Set(['DATABASE_BUSY', 'UNAUTHENTICATED', 'RESEARCH_CONSENT_REQUIRED', 'RESEARCH_DATA_EXPIRED', 'QUESTIONNAIRE_NOT_FOUND', 'REQUEST_RATE_LIMITED', 'AUTH_NOT_CONFIGURED', 'RESEARCH_CONSENT_UNAVAILABLE']);
+function withSessionLoadRecovery(handler: typeof handleGET) {
+  const recovered = withD1RetryableErrorHandling(handler);
+  return async (request: Request, context: RouteContext) => {
+    const response = await recovered(request, context);
+    if (!response.ok && (await context.params).key.startsWith('pretest:')) {
+      const payload = await response.clone().json().catch(() => ({})) as {code?: string};
+      // No user identifiers, headers, URLs, responses or question contents enter diagnostics.
+      if (payload.code && diagnosticCodes.has(payload.code)) console.warn(JSON.stringify({event:'pretest_request_failed',status:response.status,code:payload.code}));
+    }
+    return response;
+  };
+}
+export const GET = withSessionLoadRecovery(handleGET);
+export const POST = withSessionLoadRecovery(handlePOST);
