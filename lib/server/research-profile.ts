@@ -8,7 +8,7 @@ const rating = z.number().int().min(1).max(5);
 const skill = z.string().trim().min(2).max(40);
 
 export const researchProfileSchema = z.object({
-  age: z.number().int().min(18).max(120),
+  age: z.number().int().min(0).max(120),
   educationLevel: z.enum(educationLevels),
   gender: z.enum(genderValues).nullable(),
   institution: z.string().trim().max(120).nullable(),

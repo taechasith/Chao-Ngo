@@ -56,31 +56,15 @@ function response(body: Record<string, unknown>, status = 200): Response {
 async function loadQuestionnaire(sessionId: string | null): Promise<RouteQuestionnaire | null> {
   if (!sessionId) return null;
 
-  const session = await env.DB.prepare(
-    `SELECT questionnaire_sessions.questionnaire_id, questionnaire_sessions.id, questionnaire_sessions.completed_at,
-            questionnaires.questionnaire_key, questionnaires.title, questionnaires.version
-       FROM questionnaire_sessions
-       INNER JOIN questionnaires ON questionnaires.id = questionnaire_sessions.questionnaire_id
-      WHERE questionnaire_sessions.id = ?`,
-  ).bind(sessionId).first<{
-    id: string;
-    questionnaire_id: string;
-    questionnaire_key: string;
-    title: string;
-    version: string;
-    completed_at: string | null;
-  }>();
-
-  if (!session) return null;
-
-  const [questionRows, savedRows] = await env.DB.batch([
-    env.DB.prepare(
-      `SELECT id, question_key, prompt_th, type, required, options_json
-         FROM questions WHERE questionnaire_id = ? ORDER BY sort_order ASC`,
-    ).bind(session.questionnaire_id),
-    env.DB.prepare("SELECT question_id, value_json FROM responses WHERE session_id = ?")
-      .bind(sessionId),
+  const [sessionRows, questionRows, savedRows] = await env.DB.batch([
+    env.DB.prepare(`SELECT s.questionnaire_id,s.id,s.completed_at,q.questionnaire_key,q.title,q.version
+      FROM questionnaire_sessions s JOIN questionnaires q ON q.id=s.questionnaire_id WHERE s.id=?`).bind(sessionId),
+    env.DB.prepare(`SELECT q.id,q.question_key,q.prompt_th,q.type,q.required,q.options_json
+      FROM questions q JOIN questionnaire_sessions s ON s.questionnaire_id=q.questionnaire_id WHERE s.id=? ORDER BY q.sort_order`).bind(sessionId),
+    env.DB.prepare("SELECT question_id,value_json FROM responses WHERE session_id=?").bind(sessionId),
   ]);
+  const session = sessionRows.results[0] as { questionnaire_id:string; questionnaire_key:string; title:string; version:string; completed_at:string|null } | undefined;
+  if (!session) return null;
 
   const questions = questionRows.results as Array<{ id: string; options_json: string; prompt_th: string; question_key: string; required: number; type: string }>;
   const saved = savedRows.results as Array<{ question_id: string; value_json: string }>;
@@ -285,10 +269,10 @@ async function handlePOST(request: Request): Promise<Response> {
 
   try {
     await env.DB.batch(statements);
-  } catch {
+  } catch (error) {
     const racedDraft = await getDraft(participant.userId, subgameId);
     if (racedDraft) return response({ submission: racedDraft, status: "resumed" });
-    throw new Error("Could not create submission draft.");
+    throw new Error("Could not create submission draft.", { cause: error });
   }
 
   const draft = await getDraft(participant.userId, subgameId);

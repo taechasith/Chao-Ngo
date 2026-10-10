@@ -24,4 +24,11 @@ describe("D1 overload response", () => {
     expect(isRetryableD1Error(new Error("Network connection lost."))).toBe(false);
     expect(isRetryableD1Error(new Error("D1_ERROR: no such table: responses"))).toBe(false);
   });
+  it("does not turn an unavailable session service into a logout", async () => {
+    const error=Object.assign(new Error("Failed to get session"),{statusCode:500,body:{code:"FAILED_TO_GET_SESSION"}});
+    expect(isRetryableD1Error(error)).toBe(true);
+    expect((await withD1RetryableErrorHandling(async()=>{throw error;})()).status).toBe(503);
+    expect(isRetryableD1Error(Object.assign(new Error("Unauthorized"),{statusCode:401,body:{code:"FAILED_TO_GET_SESSION"}}))).toBe(false);
+  });
+
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useAiPreparation } from "../../lib/client/use-ai-preparation";
+import { fetchWithDatabaseRetry } from "../../lib/client/database-retry.mjs";
 import { type AiPreparation } from "../../lib/ai-preparation";
 import { AiCompanionNotice } from "./ai-companion-notice";
 import Link from "next/link";
@@ -162,6 +163,9 @@ function thaiError(code: string): string {
     REQUEST_RATE_LIMITED: "คุณลองดำเนินการหลายครั้งเกินไป กรุณารอสักครู่แล้วลองใหม่",
     SUBMISSION_CHANGED: "สถานะการส่งคำตอบเปลี่ยนไป กรุณารีเฟรชหน้าแล้วลองใหม่",
     UNAUTHENTICATED: "เข้าสู่ระบบก่อนส่งคำตอบ",
+    UPLOAD_ADMISSION_REQUIRED: "หน้าเว็บมีการอัปเดต กรุณาโหลดหน้าใหม่แล้วส่งไฟล์อีกครั้ง",
+    UPLOAD_ADMISSION_EXPIRED: "คิวอัปโหลดหมดเวลา กรุณาลองเลือกไฟล์อีกครั้ง",
+    UPLOAD_LENGTH_INVALID: "ขนาดไฟล์เปลี่ยนหรืออ่านไม่ได้ กรุณาเลือกไฟล์ PDF อีกครั้ง",
     UPLOAD_KIND_INVALID: "ชนิดไฟล์ที่ส่งไม่ถูกต้อง",
     UPLOAD_LIMIT_REACHED: "มีไฟล์ประเภทนี้แนบไว้แล้ว",
   };
@@ -233,7 +237,7 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
     onUpdate: async (old, next, pending) => {
       const current = submissionRef.current;
       if (!current || current.status !== "draft") return;
-      const response = await fetch(`/api/submissions?subgameId=${encodeURIComponent(subgameId)}`, {cache:"no-store"});
+      const response = await fetchWithDatabaseRetry(`/api/submissions?subgameId=${encodeURIComponent(subgameId)}`, {cache:"no-store"});
       if (!response.ok) throw new Error("Unable to reload current requirements");
       const result = await response.json() as {submission:SubmissionPayload};
       const updated = result.submission;
@@ -253,7 +257,7 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
     setSelectedFiles({});
     completedSessions.current.clear();
     try {
-      const response = await fetch("/api/submissions", {
+      const response = await fetchWithDatabaseRetry("/api/submissions", {
         body: JSON.stringify({ subgameId: selectedSubgameId }),
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
@@ -340,7 +344,7 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
     }
     if (!(await saver.flush(form.sessionId))) return false;
     try {
-      const response = await fetch(`/api/questionnaire-sessions/${form.sessionId}/complete`, {
+      const response = await fetchWithDatabaseRetry(`/api/questionnaire-sessions/${form.sessionId}/complete`, {
         credentials: "same-origin",
         method: "POST",
       });
@@ -373,7 +377,7 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
     if (!current || acknowledgementPending || !current.requirements.requiresAiChatPdf) return;
     setAcknowledgementPending(true);
     try {
-      const response = await fetch(`/api/submissions/${current.submissionId}/acknowledgement`, {
+      const response = await fetchWithDatabaseRetry(`/api/submissions/${current.submissionId}/acknowledgement`, {
         body: next ? JSON.stringify({ acknowledged: true, consentVersion: aiChatUploadConsentVersion }) : undefined,
         credentials: "same-origin",
         headers: next ? { "Content-Type": "application/json" } : undefined,
@@ -406,15 +410,23 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
     }
     setSelectedFiles((value) => ({ ...value, [kind]: { bytes: file.size, name: file.name } }));
     setUploading(true);
-    setUploadProgress(0);
-    setMessage("");
+    setUploadProgress(null);
+    setMessage("กำลังรอคิวอัปโหลด ไฟล์ยังอยู่ในเครื่องของคุณ เมื่อถึงคิวจะเริ่มส่งให้อัตโนมัติ กรุณาเปิดหน้านี้ไว้");
     const form = new FormData();
     form.set("file", file);
     form.set("kind", kind);
     try {
+      const preflight = await fetchWithDatabaseRetry(`/api/submissions/${current.submissionId}/uploads/admission`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ bytes: file.size }),
+      });
+      const permission = await preflight.json() as { permit?: string; code?: string };
+      if (!preflight.ok) { setSelectedFiles((value) => { const next = { ...value }; delete next[kind]; return next; }); setMessage(thaiError(permission.code ?? "")); return; }
+      setMessage("");
+      setUploadProgress(0);
       const result = await new Promise<{ body: UploadResponse; ok: boolean }>((resolve, reject) => {
         const request = new XMLHttpRequest();
         request.open("POST", `/api/submissions/${current.submissionId}/uploads`);
+        if (permission.permit) request.setRequestHeader("X-Upload-Permit", permission.permit);
         request.responseType = "json";
         request.withCredentials = true;
         request.upload.addEventListener("progress", (event) => {
@@ -486,7 +498,7 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
         !(await completeForm(current.answerForm, current.requirements.requiredAnswerQuestionKeys))
       ) return;
       if (current.requirements.requiresPosttest && !(await completeForm(current.posttestForm))) return;
-      const response = await fetch(`/api/submissions/${current.submissionId}/finalize`, {
+      const response = await fetchWithDatabaseRetry(`/api/submissions/${current.submissionId}/finalize`, {
         credentials: "same-origin",
         method: "POST",
       });
@@ -573,7 +585,7 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
       {needsRevision ? <><p className="mt-4 text-sm leading-6 text-white/70">สร้างแบบร่างใหม่จากคำตอบเดิมเพื่อแก้ไข งานที่ส่งครั้งก่อนจะยังเก็บไว้ หากส่งเป็นไฟล์ให้แนบไฟล์ฉบับแก้ไขอีกครั้ง</p><InvestigativeAction className="mt-5" disabled={saving} onClick={() => void (async () => {
         setSaving(true); setMessage("");
         try {
-          const response = await fetch(`/api/submissions/${encodeURIComponent(submission.submissionId)}/revise`, { method: "POST", credentials: "same-origin" });
+          const response = await fetchWithDatabaseRetry(`/api/submissions/${encodeURIComponent(submission.submissionId)}/revise`, { method: "POST", credentials: "same-origin" });
           if (!response.ok) throw new Error("สร้างแบบร่างแก้ไขไม่ได้ กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง");
           await startDraft(subgameId);
         } catch (error) { setMessage(error instanceof Error ? error.message : "เชื่อมต่อไม่ได้"); }

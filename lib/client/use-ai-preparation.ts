@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseAdditionalAiLinks, type AiPreparation } from "../ai-preparation";
+import { fetchWithDatabaseRetry } from "./database-retry.mjs";
 
 type Draft = { aiCompanionUsed: boolean; linksText: string };
 const empty: Draft = { aiCompanionUsed: false, linksText: "" };
@@ -43,7 +44,7 @@ export function useAiPreparation(id: string | undefined, initial: AiPreparation 
     setPending(true); setStatus("กำลังบันทึกข้อมูล AI…");
     const work = (async () => {
       try {
-        const response = await fetch(`/api/submissions/${encodeURIComponent(snapshot.id)}/preparation`, {
+        const response = await fetchWithDatabaseRetry(`/api/submissions/${encodeURIComponent(snapshot.id)}/preparation`, {
           method: "PATCH", credentials: "same-origin", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ aiCompanionUsed: snapshot.draft.aiCompanionUsed, additionalAiLinks: links }),
         });

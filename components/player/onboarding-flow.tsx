@@ -123,7 +123,7 @@ function responseMessage(status: number): string {
   }
 
   if (status === 503) {
-    return "การเก็บข้อมูลวิจัยยังไม่เปิดใช้งาน";
+    return "ระบบกำลังรับคำขอจำนวนมาก กรุณารอสักครู่แล้วลองอีกครั้ง คำตอบที่ค้างยังอยู่";
   }
 
   return "ไม่สามารถบันทึกข้อมูลได้ในขณะนี้ กรุณาลองใหม่";
@@ -417,7 +417,7 @@ export function OnboardingFlow() {
             <p>อ่านข้อมูลในเอกสารนี้ให้ครบก่อนตัดสินใจเข้าร่วม</p>
             <div className="player-system-note">
               <strong>ก่อนเปิดแฟ้มคดี</strong>
-              <p>โครงการเปิดรับผู้เข้าร่วมที่มีอายุ {notice.minimumParticipantAge} ปีขึ้นไป</p>
+              <p>กรอกอายุของคุณตามจริง ไม่มีอายุขั้นต่ำในการเข้าเล่น</p>
             </div>
             <label className="player-consent-control">
             <input
