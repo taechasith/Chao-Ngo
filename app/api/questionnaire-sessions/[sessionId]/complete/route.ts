@@ -141,7 +141,7 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
         crypto.randomUUID(),
         participant.userId,
         session.questionnaire_key.startsWith("postgame:") ? "posttest_completed" : "submission_draft_saved",
-        JSON.stringify({ instrumentVersion: session.questionnaire_version }),
+        JSON.stringify({ instrumentVersion: session.questionnaire_version, questionnaireKey: session.questionnaire_key }),
       ),
     ]);
 

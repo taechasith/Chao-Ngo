@@ -13,6 +13,7 @@ export type CompletionState = {
 
 type PlayableSubgame = { id: string; required_for_completion: number; title: string };
 type SubmittedSubgame = {
+  legacy_ka_no_posttest: number;
   answer_attachment_uploaded: number;
   answer_completed_at: string | null;
   posttest_completed_at: string | null;
@@ -64,6 +65,10 @@ export async function recalculateCompletionForUser(userId: string): Promise<Comp
     ).bind(userId),
     env.DB.prepare(
       `SELECT submissions.subgame_id,
+              (submissions.subgame_id IN ('subgame-ka-fintech','subgame-ka-wa-ve')
+                AND submissions.posttest_session_id IS NULL
+                AND EXISTS(SELECT 1 FROM questions WHERE questionnaire_id=answer_session.questionnaire_id
+                  AND question_key IN ('case_summary','case_truth_model'))) AS legacy_ka_no_posttest,
               answer_session.completed_at AS answer_completed_at,
               posttest_session.completed_at AS posttest_completed_at,
               EXISTS(
@@ -100,7 +105,7 @@ export async function recalculateCompletionForUser(userId: string): Promise<Comp
       !submission.answer_completed_at &&
       !submission.answer_attachment_uploaded
     ) return null;
-    if (requirements.requiresPosttest && !submission.posttest_completed_at) return null;
+    if (requirements.requiresPosttest && !submission.legacy_ka_no_posttest && !submission.posttest_completed_at) return null;
     return submission.subgame_id;
   }).filter((subgameId): subgameId is string => subgameId !== null));
   const activeConsent = Boolean(user?.consent_active);

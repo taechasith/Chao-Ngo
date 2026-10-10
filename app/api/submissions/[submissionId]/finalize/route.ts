@@ -1,4 +1,5 @@
 import { withD1RetryableErrorHandling } from "../../../../../lib/server/d1-overload";
+import { hasRequiredCasePretest } from "../../../../../lib/server/questionnaires/pretest";
 import { env } from "cloudflare:workers";
 
 import { requireResearchParticipant } from "../../../../../lib/server/research-access";
@@ -132,6 +133,8 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
     return response({ completion: await recalculateCompletionForUser(participant.userId), status: "already_submitted" });
   }
   if (submission.status !== "draft") return response({ code: "SUBMISSION_NOT_DRAFT" }, 409);
+
+  if (!(await hasRequiredCasePretest(env.DB, participant.userId, submission.subgame_id))) return response({ code: "CASE_PRETEST_REQUIRED" }, 409);
 
   const requirements = await getSubmissionRequirements(env.DB, submission.subgame_id, submission.questionnaire_session_id);
   const validation = await env.DB.batch([

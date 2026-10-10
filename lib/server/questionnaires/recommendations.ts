@@ -84,6 +84,12 @@ export function calculateRecommendations(
       : [],
   );
 
+  const styleAliases: Record<string, string[]> = {
+    physical_systems: ["space_engineering"], economics_finance: ["systems_economy"],
+    digital_security: ["systems_economy"], evidence_reasoning: ["pattern_puzzle"],
+  };
+  for (const style of [...selectedProblemStyles]) for (const alias of styleAliases[style] ?? []) selectedProblemStyles.add(alias);
+
   return storedRules
     .flatMap((storedRule) => {
       const rule = parseRule(storedRule.ruleJson);
@@ -96,7 +102,7 @@ export function calculateRecommendations(
         normalizedScaleValue(answers.get(`field_interest_${field}`)),
       );
       const confidenceGap = averageFieldValue(rule.fields, (field) =>
-        1 - normalizedScaleValue(answers.get(`field_familiarity_${field}`)),
+        answers.has(`field_familiarity_${field}`) ? 1 - normalizedScaleValue(answers.get(`field_familiarity_${field}`)) : 0,
       );
       const problemStyle =
         rule.problemStyleKeys.length === 0

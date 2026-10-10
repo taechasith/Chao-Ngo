@@ -1,3 +1,4 @@
+import { hasRequiredCasePretest } from "../../../../../lib/server/questionnaires/pretest";
 import { env } from "cloudflare:workers";
 
 import { requireResearchParticipant } from "../../../../../lib/server/research-access";
@@ -108,6 +109,8 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
   }
 
   const { key } = await context.params;
+  const gatedCase = /^(?:submission|postgame):(subgame-[a-z0-9-]+)$/.exec(key)?.[1];
+  if (gatedCase && !(await hasRequiredCasePretest(env.DB,participant.userId,gatedCase))) return noStoreResponse({ code: "CASE_PRETEST_REQUIRED" },409);
   const questionnaire = await getPublishedQuestionnaire(key);
 
   if (!questionnaire) {
@@ -160,12 +163,21 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
   if (!(await isWithinPlayerMutationLimit(participant.userId, "questionnaire-session", 8))) return noStoreResponse({ code: "REQUEST_RATE_LIMITED" }, 429);
 
   const { key } = await context.params;
+  const gatedCase = /^(?:submission|postgame):(subgame-[a-z0-9-]+)$/.exec(key)?.[1];
+  if (gatedCase && !(await hasRequiredCasePretest(env.DB,participant.userId,gatedCase))) return noStoreResponse({ code: "CASE_PRETEST_REQUIRED" },409);
   const questionnaire = await getPublishedQuestionnaire(key);
 
   if (!questionnaire) {
     return noStoreResponse({ code: "QUESTIONNAIRE_NOT_FOUND" }, 404);
   }
 
+  if (key.startsWith("pretest:")) {
+    const completed = await env.DB.prepare(`SELECT s.id FROM questionnaire_sessions s JOIN questionnaires q ON q.id=s.questionnaire_id
+      WHERE s.user_id=? AND q.questionnaire_key=? AND s.completed_at IS NOT NULL ORDER BY s.started_at,s.rowid LIMIT 1`)
+      .bind(participant.userId,key).first<{id:string}>();
+    const form = completed ? await readQuestionnaireSession(env.DB,participant.userId,completed.id) : null;
+    if (form) return noStoreResponse({questionnaire:{id:form.id,key:form.key,questions:form.questions,title:form.title,version:form.version},responses:form.responses,sessionId:form.sessionId,completed:true});
+  }
   const prior = await env.DB.prepare(`SELECT s.id FROM questionnaire_sessions s JOIN questionnaires q ON q.id=s.questionnaire_id
     WHERE s.user_id=? AND q.questionnaire_key=? AND s.completed_at IS NULL AND s.closed_at IS NULL ORDER BY s.started_at DESC LIMIT 1`).bind(participant.userId,key).first<{id:string}>();
   if (prior) {

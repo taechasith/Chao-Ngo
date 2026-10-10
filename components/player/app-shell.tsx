@@ -11,6 +11,8 @@ import { AccountGate, type AccountStatus } from "./account-gate";
 import { AchievementToast } from "./achievement-toast";
 import { AutoGuide, HelpButton } from "./help-button";
 import { ContextBreadcrumb } from "./context-breadcrumb";
+import { CasePretestGate } from "./case-pretest-gate";
+import { pretestCaseForPath } from "../../lib/question-pack";
 import { UiSound } from "./ui-sound";
 
 type AppShellProps = {
@@ -85,6 +87,7 @@ function guideKeyForPath(pathname: string) {
 
 export function AppShell({ children, fullBleed = false, guideKey: providedGuideKey, pageTitle }: AppShellProps) {
   const pathname = usePathname();
+  const pretestSubgameId = pretestCaseForPath(pathname);
   const topbarRef = useRef<HTMLElement>(null);
   const navFrameRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLElement>(null);
@@ -331,7 +334,7 @@ export function AppShell({ children, fullBleed = false, guideKey: providedGuideK
       <main className={`${fullBleed ? "player-main player-main--bleed" : "player-main"}${showGameplayTools ? " player-main--with-dock" : ""}`} data-guide="player-main" id="player-main" ref={contentRef} tabIndex={-1}>
         {requiresAccount
           ? accountStatus === "signed-in"
-            ? children
+            ? pretestSubgameId ? <CasePretestGate key={pretestSubgameId} subgameId={pretestSubgameId}>{children}</CasePretestGate> : children
             : <AccountGate redirectTo={pathname} status={accountStatus} />
           : children}
       </main>
