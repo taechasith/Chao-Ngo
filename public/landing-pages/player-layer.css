@@ -56,9 +56,11 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid #a1da
 @media(max-width:480px){.logos .mind-card .mind-copy{padding-right:3.5rem}.logos .mind-art{right:1rem;width:4rem}}
 @media(prefers-reduced-motion:reduce){.logos .mind-card,.logos .mind-art,.logos .mind-action span{transition:none}}
 
-.chao-archive-signal{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;width:28px;height:28px;margin-left:4px;padding:0;border:0;background:transparent;color:#66756c;font:inherit;font-size:18px;cursor:pointer;touch-action:manipulation}
+.chao-archive-signal{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;min-height:28px;margin-left:4px;padding:0;border:0;background:transparent;color:#66756c;font:inherit;font-size:inherit;cursor:pointer;touch-action:manipulation}
 .chao-archive-signal:hover{color:#e77850}
-.chao-archive-dialog{position:fixed;inset:0;width:fit-content;max-width:calc(100vw - 32px);height:fit-content;max-height:calc(100dvh - 32px);margin:auto;padding:0;border:1px solid #e77850;background:#ff7919;overflow:hidden;box-shadow:0 18px 80px #0009}
+.chao-archive-dialog{position:fixed;inset:0;width:fit-content;max-width:calc(100vw - 32px);height:fit-content;max-height:calc(100dvh - 32px);margin:auto;padding:0;border:1px solid #e77850;background:#101412;overflow:auto;box-shadow:0 18px 80px #0009}
 .chao-archive-dialog::backdrop{background:rgba(0,0,0,.92)}
-.chao-archive-dialog img{display:block;width:auto;height:auto;max-width:calc(100vw - 34px);max-height:calc(100dvh - 34px);object-fit:contain}
+.chao-archive-dialog img{display:block;width:auto;height:auto;max-width:calc(100vw - 34px);max-height:calc(100dvh - 150px);margin:auto;object-fit:contain}
 .chao-archive-close{position:absolute;z-index:1;top:8px;right:8px;display:grid;place-items:center;width:40px;height:40px;border:1px solid #ffffff70;border-radius:50%;background:#0a0d0eee;color:#fff;font:28px/1 sans-serif;cursor:pointer}
+
+.chao-archive-note{margin:0;padding:16px 18px;color:#f1f0eb;font-size:14px;line-height:1.6;text-align:center;max-width:34rem}.chao-archive-note a{color:#ffa074;text-decoration:underline;text-underline-offset:3px}.chao-archive-note strong{display:block;margin-top:4px;color:#ffa074}

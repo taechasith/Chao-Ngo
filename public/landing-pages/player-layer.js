@@ -58,27 +58,17 @@
     const signal = document.createElement("button");
     signal.type = "button";
     signal.className = "chao-archive-signal";
-    signal.setAttribute("aria-label", "สัญญาณจากผู้พัฒนา");
-    signal.innerHTML = '<span aria-hidden="true">·</span>';
+    signal.textContent = "Easter Egg";
     credit.append(signal);
 
-    let taps = 0;
-    let startedAt = 0;
     let active = false;
     signal.addEventListener("click", () => {
       if (active) return;
-      const now = window.performance.now();
-      if (!taps || now - startedAt > 8000) {
-        taps = 0;
-        startedAt = now;
-      }
-      if (++taps < 7) return;
-      taps = 0;
       active = true;
       const dialog = document.createElement("dialog");
       dialog.className = "chao-archive-dialog";
       dialog.setAttribute("aria-label", "คุณพบข้อความลับจากผู้พัฒนาแล้ว");
-      dialog.innerHTML = '<button class="chao-archive-close" type="button" aria-label="ปิดภาพลับ">×</button><img src="/images/archive-signal.png" width="1414" height="2000" alt="หาเจอแจก 500 คะแนน — Dev ใจดี" decoding="async">';
+      dialog.innerHTML = '<button class="chao-archive-close" type="button" aria-label="ปิดภาพลับ">×</button><img src="/images/archive-signal.png" width="1414" height="2000" alt="หาเจอแจก 500 คะแนน — Dev ใจดี" decoding="async"><p class="chao-archive-note">เจอแล้ว tag story มาที่ ig : <a href="https://www.instagram.com/tnp_ybp/" target="_blank" rel="noopener noreferrer">tnp_ybp ↗</a><strong>รับแค่ 20 คนแรก</strong></p>';
       const previousOverflow = document.body.style.overflow;
       const close = () => dialog.close();
       dialog.querySelector("button").addEventListener("click", close);
