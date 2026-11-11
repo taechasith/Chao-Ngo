@@ -90,7 +90,7 @@ export class AnswerAutosave {
       } else {
         this.notify("error");
         this.options.onError?.(result.message ?? "เครือข่ายขัดข้อง คำตอบยังค้างบันทึก ลองอีกครั้งเมื่อเชื่อมต่อได้");
-        if (result.retryable) this.schedule(key, Math.min(30_000, 2_000 * 2 ** Math.min(this.failures++, 4)));
+        if (result.retryable) this.schedule(key, Math.min(30_000, 2_000 * 2 ** Math.min(this.failures++, 4) + Math.floor(Math.random() * 500)));
       }
       return result.ok;
     })().finally(() => { this.flights.delete(key); });

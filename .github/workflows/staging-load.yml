@@ -1,0 +1,39 @@
+name: Chao Ngo isolated Cloudflare staging load
+on:
+  push:
+    branches: [codex/staging-load-20261112]
+permissions:
+  contents: read
+concurrency:
+  group: chao-ngo-isolated-load-qa
+  cancel-in-progress: false
+jobs:
+  staging:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Validate staging runner
+        run: node --check scripts/staging-load.mjs
+      - name: Cloudflare staging 100 → 300 → 1,000
+        run: |
+          set -euo pipefail
+          for cohort in 100 300 1000; do
+            node scripts/staging-load.mjs "$cohort"
+          done
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: c24fed68f8dc59cc339bd821d215bba8
+      - name: Retain staging evidence and cleanup record
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: chao-ngo-staging-load-results
+          path: qa-results/*/results.json
+          if-no-files-found: warn
+          retention-days: 14

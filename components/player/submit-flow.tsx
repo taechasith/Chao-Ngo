@@ -1,5 +1,7 @@
 "use client";
 
+import { fetchWithDatabaseRetry } from "../../lib/client/database-retry";
+
 import { caseRoutes, scaleDescription } from "../../lib/question-pack";
 import { useAiPreparation } from "../../lib/client/use-ai-preparation";
 import { type AiPreparation } from "../../lib/ai-preparation";
@@ -235,7 +237,7 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
     onUpdate: async (old, next, pending) => {
       const current = submissionRef.current;
       if (!current || current.status !== "draft") return;
-      const response = await fetch(`/api/submissions?subgameId=${encodeURIComponent(subgameId)}`, {cache:"no-store"});
+      const response = await fetchWithDatabaseRetry(`/api/submissions?subgameId=${encodeURIComponent(subgameId)}`, {cache:"no-store"});
       if (!response.ok) throw new Error("Unable to reload current requirements");
       const result = await response.json() as {submission:SubmissionPayload};
       const updated = result.submission;
@@ -255,7 +257,7 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
     setSelectedFiles({});
     completedSessions.current.clear();
     try {
-      const response = await fetch("/api/submissions", {
+      const response = await fetchWithDatabaseRetry("/api/submissions", {
         body: JSON.stringify({ subgameId: selectedSubgameId }),
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
@@ -488,7 +490,7 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
         !(await completeForm(current.answerForm, current.requirements.requiredAnswerQuestionKeys))
       ) return;
       if (current.requirements.requiresPosttest && !(await completeForm(current.posttestForm))) return;
-      const response = await fetch(`/api/submissions/${current.submissionId}/finalize`, {
+      const response = await fetchWithDatabaseRetry(`/api/submissions/${current.submissionId}/finalize`, {
         credentials: "same-origin",
         method: "POST",
       });

@@ -316,7 +316,13 @@ describe("B6 legacy instruments retain real D1/private R2 contracts", () => {
     await expect(cleanExpiredResearch({ DB: env.DB, PRIVATE_UPLOADS: failingBucket })).rejects.toThrow("will retry");
     expect(await env.PRIVATE_UPLOADS.head(key)).not.toBeNull();
     expect((await startSubmission(request("POST", { subgameId }))).status).toBe(403);
+    const avatar = `player-avatars/${encodeURIComponent(owner)}/qa-avatar`;
+    const otherAvatar = `player-avatars/${encodeURIComponent(stranger)}/qa-avatar`;
+    await env.PRIVATE_UPLOADS.put(avatar, "fixture");
+    await env.PRIVATE_UPLOADS.put(otherAvatar, "fixture");
     expect(await cleanExpiredResearch(env)).toEqual({ completed: 1 });
+    expect(await env.PRIVATE_UPLOADS.head(avatar)).toBeNull();
+    expect(await env.PRIVATE_UPLOADS.head(otherAvatar)).not.toBeNull();
     expect(await env.PRIVATE_UPLOADS.head(key)).toBeNull();
     expect(await env.DB.prepare("SELECT id FROM submissions WHERE id = ?").bind(id).first()).toBeNull();
     expect(await env.DB.prepare("SELECT id FROM consent_records WHERE user_id = ?").bind(owner).first()).toBeNull();

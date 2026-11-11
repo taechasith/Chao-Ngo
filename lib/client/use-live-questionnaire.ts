@@ -14,7 +14,7 @@ export function useLiveQuestionnaire({forms,enabled,saver,onUpdate}:{forms:LiveF
     if(checking.current || !latest.current.enabled || !latest.current.forms.length || document.visibilityState==='hidden') return false;
     checking.current=true;let updated=false;
     try {
-      const response=await fetch('/api/questionnaires/revisions',{cache:'no-store'});if(!response.ok) return false;
+      const response=await fetch('/api/questionnaires/revisions');if(!response.ok) return false;
       const {revisions}=await response.json() as {revisions:Record<string,string>};
       for(const old of latest.current.forms) {
         if(!revisions[old.key] || revisions[old.key]===old.id) continue;
@@ -40,7 +40,7 @@ export function useLiveQuestionnaire({forms,enabled,saver,onUpdate}:{forms:LiveF
   const run=useRef(refresh);run.current=refresh;
   useEffect(()=>{
     const check=()=>{void run.current();};
-    const timer=setInterval(check,5000+Math.floor(Math.random()*1000));check();
+    const timer=setInterval(check,20_000+Math.floor(Math.random()*10_000));check();
     window.addEventListener('focus',check);window.addEventListener('online',check);document.addEventListener('visibilitychange',check);
     return()=>{clearInterval(timer);window.removeEventListener('focus',check);window.removeEventListener('online',check);document.removeEventListener('visibilitychange',check);};
   },[]);

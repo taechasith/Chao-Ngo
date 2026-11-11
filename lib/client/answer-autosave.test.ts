@@ -59,7 +59,9 @@ describe("answers survive navigation, clearing and a failed connection", () => {
     const saver = new AnswerAutosave({ send });
     saver.enqueue("s", "q", "retry");
     expect(await saver.flush()).toBe(false);
-    await vi.advanceTimersByTimeAsync(2000);
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(send).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(501);
     expect(send).toHaveBeenCalledTimes(2);
     expect(await saver.flush()).toBe(true);
     saver.dispose();

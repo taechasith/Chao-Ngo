@@ -2,17 +2,17 @@ import { describe, expect, it, vi } from "vitest";
 import { AdmissionBusyError, isFinalizationRequest, RequestAdmission } from "./request-admission";
 
 describe("global finalization admission", () => {
-  it("runs 300 callers in order with at most 20 active and preserves each result", async () => {
+  it("runs 1,000 callers in order with at most 20 active and preserves each result", async () => {
     const admission = new RequestAdmission();
     let active = 0, peak = 0;
     const started: number[] = [];
-    const results = await Promise.all(Array.from({ length: 300 }, (_, index) => admission.run(async () => {
+    const results = await Promise.all(Array.from({ length: 1_000 }, (_, index) => admission.run(async () => {
       started.push(index); active++; peak = Math.max(peak, active);
       await Promise.resolve(); active--;
       return index;
     })));
     expect(peak).toBe(20);
-    expect(started).toEqual(Array.from({ length: 300 }, (_, index) => index));
+    expect(started).toEqual(Array.from({ length: 1_000 }, (_, index) => index));
     expect(results).toEqual(started);
   });
 

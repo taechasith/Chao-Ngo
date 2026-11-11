@@ -12,6 +12,9 @@ export function withSecurityHeaders(response: Response, request: Request): Respo
   headers.set("X-Frame-Options", "SAMEORIGIN");
   headers.set("Cross-Origin-Opener-Policy", "same-origin");
   headers.set("Cross-Origin-Resource-Policy", "same-origin");
-  if (new URL(request.url).pathname.startsWith("/api/")) headers.set("Cache-Control", "no-store");
+  const path = new URL(request.url).pathname;
+  const publicRevisions = path === "/api/questionnaires/revisions" && request.method === "GET"
+    && response.ok && !headers.has("Set-Cookie") && headers.get("Cache-Control")?.startsWith("public,");
+  if (path.startsWith("/api/") && !publicRevisions) headers.set("Cache-Control", "no-store");
   return new Response(response.body, { headers, status: response.status, statusText: response.statusText });
 }

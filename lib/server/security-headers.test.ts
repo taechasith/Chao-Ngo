@@ -3,6 +3,15 @@ import { describe, expect, it } from "vitest";
 import { withSecurityHeaders } from "./security-headers";
 
 describe("security headers", () => {
+  it("allows only the public revisions document to retain its cache policy", () => {
+    const revisions = new Request("https://example.test/api/questionnaires/revisions");
+    const makeResponse = () => Response.json({ revisions: {} }, { headers: { "Cache-Control": "public, max-age=5" } });
+    expect(withSecurityHeaders(makeResponse(), revisions).headers.get("Cache-Control")).toBe("public, max-age=5");
+    const cookie = makeResponse();
+    cookie.headers.set("Set-Cookie", "qa=1");
+    expect(withSecurityHeaders(cookie, revisions).headers.get("Cache-Control")).toBe("no-store");
+    expect(withSecurityHeaders(makeResponse(), new Request("https://example.test/api/submissions")).headers.get("Cache-Control")).toBe("no-store");
+  });
   it("protects API responses and prevents caching research data", async () => {
     const response = withSecurityHeaders(new Response("ok"), new Request("https://example.test/api/submissions"));
     expect(response.headers.get("Cache-Control")).toBe("no-store");

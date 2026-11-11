@@ -19,10 +19,13 @@ export async function cleanExpiredResearch({ DB, PRIVATE_UPLOADS }: RetentionBin
       ).bind(id).run();
       if (!claim.meta.changes) continue;
 
-      const prefix = `research-uploads/${id}/`;
-      const objects = await PRIVATE_UPLOADS.list({ prefix, limit: 200 });
-      if (objects.objects.length) await PRIVATE_UPLOADS.delete(objects.objects.map((object) => object.key));
-      if (objects.truncated) continue;
+      let remainingFiles = false;
+      for (const prefix of [`research-uploads/${id}/`, `player-avatars/${encodeURIComponent(id)}/`]) {
+        const objects = await PRIVATE_UPLOADS.list({ prefix, limit: 200 });
+        if (objects.objects.length) await PRIVATE_UPLOADS.delete(objects.objects.map((object) => object.key));
+        remainingFiles ||= objects.truncated;
+      }
+      if (remainingFiles) continue;
 
       await DB.batch([
         DB.prepare("DELETE FROM activity_events WHERE user_id = ?").bind(id),
