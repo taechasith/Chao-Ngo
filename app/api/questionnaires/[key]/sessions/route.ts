@@ -1,3 +1,4 @@
+import { openCasePretest } from "../../../../../lib/server/questionnaires/open-pretest";
 import { hasRequiredCasePretest } from "../../../../../lib/server/questionnaires/pretest";
 import { withD1RetryableErrorHandling } from "../../../../../lib/server/d1-overload";
 import { env } from "cloudflare:workers";
@@ -156,6 +157,8 @@ async function handleGET(request: Request, context: RouteContext): Promise<Respo
 
 async function handlePOST(request: Request, context: RouteContext): Promise<Response> {
   if (!isSameOriginRequest(request)) return noStoreResponse({ code: "CROSS_ORIGIN_REQUEST" }, 403);
+  const { key } = await context.params;
+  if (key.startsWith("pretest:")) return openCasePretest(request, key);
   const participant = await requireResearchParticipant(request);
 
   if (participant instanceof Response) {
@@ -163,7 +166,6 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
   }
   if (!(await isWithinPlayerMutationLimit(participant.userId, "questionnaire-session", 8))) return noStoreResponse({ code: "REQUEST_RATE_LIMITED" }, 429);
 
-  const { key } = await context.params;
   const gatedCase = /^(?:submission|postgame):(subgame-[a-z0-9-]+)$/.exec(key)?.[1];
   if (gatedCase && !(await hasRequiredCasePretest(env.DB,participant.userId,gatedCase))) return noStoreResponse({ code: "CASE_PRETEST_REQUIRED" },409);
   const questionnaire = await getPublishedQuestionnaire(key);
@@ -172,13 +174,6 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
     return noStoreResponse({ code: "QUESTIONNAIRE_NOT_FOUND" }, 404);
   }
 
-  if (key.startsWith("pretest:")) {
-    const completed = await env.DB.prepare(`SELECT s.id FROM questionnaire_sessions s JOIN questionnaires q ON q.id=s.questionnaire_id
-      WHERE s.user_id=? AND q.questionnaire_key=? AND s.completed_at IS NOT NULL ORDER BY s.started_at,s.rowid LIMIT 1`)
-      .bind(participant.userId,key).first<{id:string}>();
-    const form = completed ? await readQuestionnaireSession(env.DB,participant.userId,completed.id) : null;
-    if (form) return noStoreResponse({questionnaire:{id:form.id,key:form.key,questions:form.questions,title:form.title,version:form.version},responses:form.responses,sessionId:form.sessionId,completed:true});
-  }
   const prior = await env.DB.prepare(`SELECT s.id FROM questionnaire_sessions s JOIN questionnaires q ON q.id=s.questionnaire_id
     WHERE s.user_id=? AND q.questionnaire_key=? AND s.completed_at IS NULL AND s.closed_at IS NULL ORDER BY s.started_at DESC LIMIT 1`).bind(participant.userId,key).first<{id:string}>();
   if (prior) {

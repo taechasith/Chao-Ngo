@@ -10,8 +10,16 @@ import { POST as complete } from '../../app/api/questionnaire-sessions/[sessionI
 import { POST as draft } from '../../app/api/submissions/route';
 import { POST as finalize } from '../../app/api/submissions/[submissionId]/finalize/route';
 import { recalculateCompletionForUser } from './completion';
+import { consentVersion, dataNoticeVersion } from './research-consent-copy';
 import { getSubmissionRequirements } from './submissions/requirements';
 vi.mock('./research-access', () => ({requireResearchParticipant: async (request: Request) => request.headers.get('x-test-user') ? {userId:request.headers.get('x-test-user'), minimumParticipantAge:0} : Response.json({code:'UNAUTHENTICATED'}, {status:401})}));
+vi.mock('./auth', () => ({
+  getAuthReadinessForRuntime: () => ({ isReady: true }),
+  getAuth: () => ({ api: { getSession: async ({ headers }: { headers: Headers }) => {
+    const id = headers.get('x-test-user');
+    return id ? { user: { id } } : null;
+  } } }),
+}));
 vi.mock('./request-limits', () => ({isWithinPlayerMutationLimit:async()=>true}));
 let mf: Miniflare;
 const owner='cq2-qa';
@@ -30,14 +38,18 @@ async function fill(form:Form) {
   expect((await complete(req(),{params:Promise.resolve({sessionId:form.sessionId})})).status).toBe(200);
 }
 beforeAll(async()=>{
-  mf=new Miniflare(convertV4MiniflareOptions({modules:true,script:'export default {}',compatibilityDate:'2026-09-19',d1Databases:['DB']}));
+  mf=new Miniflare(convertV4MiniflareOptions({modules:true,script:'export default {}',compatibilityDate:'2026-09-19',d1Databases:['DB'],r2Buckets:['PRIVATE_UPLOADS']}));
   env.DB=await mf.getD1Database('DB') as unknown as D1Database;
+  env.PRIVATE_UPLOADS=await mf.getR2Bucket('PRIVATE_UPLOADS') as unknown as R2Bucket;
   for (const name of (await readdir('migrations')).filter(n=>n.endsWith('.sql') && n<'0023').sort()) await env.DB.batch(unstable_splitSqlQuery(await readFile(`migrations/${name}`,'utf8')).map(sql=>env.DB.prepare(sql)));
   await env.DB.prepare('INSERT INTO "user"(id,name,email,emailVerified,createdAt,updatedAt) VALUES (?, ?, ?,1,0,0)').bind(owner,'QA','cq2@example.test').run();
   await env.DB.prepare("INSERT INTO questionnaire_sessions(id,user_id,questionnaire_id,completed_at) VALUES ('cq2-old-receipt',?,'questionnaire-submission-ka-maimee-v3',CURRENT_TIMESTAMP)").bind(owner).run();
   await env.DB.prepare("INSERT INTO responses(id,session_id,question_id,value_json) SELECT 'cq2-old-answer','cq2-old-receipt',id,'\"Original answer\"' FROM questions WHERE questionnaire_id='questionnaire-submission-ka-maimee-v3' AND question_key='case_summary'").run();
   await env.DB.batch(unstable_splitSqlQuery(await readFile('migrations/0023_question_pack_v2.sql','utf8')).map(sql=>env.DB.prepare(sql)));
   await env.DB.batch(unstable_splitSqlQuery(await readFile('migrations/0024_submission_completion_jobs.sql','utf8')).map(sql=>env.DB.prepare(sql)));
+  await env.DB.prepare("UPDATE app_metadata SET value='true' WHERE key='research_collection_enabled'").run();
+  await env.DB.prepare(`INSERT INTO consent_records(id,user_id,consent_version,data_notice_version,research_participation,ai_chat_upload_consent)
+    VALUES ('cq2-consent',?,?,?,1,0)`).bind(owner,consentVersion,dataNoticeVersion).run();
 },30000);
 afterAll(async()=>{await mf?.dispose();});
 it('returns a retryable response when D1 cannot load or start a pretest', async () => {
@@ -49,6 +61,54 @@ it('returns a retryable response when D1 cannot load or start a pretest', async 
       expect(response.status).toBe(503); expect(response.headers.get('Retry-After')).toBe('2');
       expect(await response.json()).toEqual({code:'DATABASE_BUSY'});
     } finally { env.DB = database; }
+  }
+});
+it('opens one pretest and event across concurrent tabs, preserving saved answers and access checks', async () => {
+  const db = env.DB;
+  const id = 'cq2-pretest-race';
+  const key = `pretest:${cases[0]}`;
+  const call = (origin = 'https://example.test', user: string | undefined = id) => start(new Request(
+    'https://example.test/api/questions', { method: 'POST', headers: { Origin: origin, 'x-test-user': user ?? '' } },
+  ), ctx(key));
+  await db.prepare('INSERT INTO "user"(id,name,email,emailVerified,createdAt,updatedAt) VALUES (?,?,?,1,0,0)')
+    .bind(id,'QA','pretest-race@example.test').run();
+  expect((await call('https://example.test','')).status).toBe(401);
+  expect((await call('https://other.test')).status).toBe(403);
+  expect(await (await call()).json()).toEqual({ code: 'RESEARCH_CONSENT_REQUIRED' });
+  await db.prepare(`INSERT INTO consent_records(id,user_id,consent_version,data_notice_version,research_participation,ai_chat_upload_consent)
+    VALUES ('cq2-race-consent',?,?,?,1,0)`).bind(id,consentVersion,dataNoticeVersion).run();
+  const opened = await Promise.all([call(), call(), call()]);
+  expect(opened.map(x=>x.status).sort()).toEqual([200,200,201]);
+  const forms = await Promise.all(opened.map(x=>x.json())) as Form[];
+  const form = forms[0];
+  expect(new Set(forms.map(x=>x.sessionId))).toEqual(new Set([form.sessionId]));
+  expect(await db.prepare("SELECT COUNT(*) n FROM activity_events WHERE user_id=? AND event_type='pregame_started'").bind(id).first()).toEqual({ n:1 });
+  const q = form.questionnaire.questions[0];
+  const value = (q.options as { value: string }[])[0].value;
+  await db.prepare("INSERT INTO responses(id,session_id,question_id,value_json) VALUES ('qa-race-answer',?,?,?)")
+    .bind(form.sessionId,q.id,JSON.stringify(value)).run();
+  expect(await (await call()).json()).toMatchObject({ sessionId: form.sessionId, responses: { [q.id]: value } });
+  // The form can rotate without losing the compatible saved answer or the old form for pending autosaves.
+  const next = 'qa-pretest-republish';
+  await db.batch([
+    db.prepare("UPDATE questionnaires SET published=0 WHERE id=?").bind(form.questionnaire.id),
+    db.prepare("INSERT INTO questionnaires(id,questionnaire_key,version,title,published) SELECT ?,questionnaire_key,'qa-new',title,1 FROM questionnaires WHERE id=?").bind(next,form.questionnaire.id),
+    db.prepare("INSERT INTO questions(id,questionnaire_id,question_key,prompt_th,type,required,options_json,sort_order) SELECT 'new-'||id,?,question_key,prompt_th,type,required,options_json,sort_order FROM questions WHERE questionnaire_id=?").bind(next,form.questionnaire.id),
+  ]);
+  try {
+    expect(await (await call()).json()).toMatchObject({
+      questionnaire:{id:next},responses:{['new-'+q.id]:value},previousForms:[{sessionId:form.sessionId}],
+    });
+    for (let i=0;i<3;i++) expect((await call()).status).toBe(200);
+    expect((await call()).status).toBe(429);
+    await db.prepare("UPDATE consent_records SET withdrawn_at=CURRENT_TIMESTAMP WHERE user_id=?").bind(id).run();
+    expect(await (await call()).json()).toEqual({ code:'RESEARCH_CONSENT_REQUIRED' });
+  } finally {
+    await db.batch([
+      db.prepare("DELETE FROM questionnaire_sessions WHERE user_id=?").bind(id),
+      db.prepare("DELETE FROM questionnaires WHERE id=?").bind(next),
+      db.prepare("UPDATE questionnaires SET published=1 WHERE id=?").bind(form.questionnaire.id),
+    ]);
   }
 });
 it('creates 13 versioned instruments, preserving historical answers and disabling candidate grading',async()=>{

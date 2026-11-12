@@ -30,7 +30,7 @@ export async function pretestRequest<T>(url: string, method: 'GET' | 'POST', sig
   for (let attempt = 0; ; attempt++) {
     signal.throwIfAborted();
     let error: unknown;
-    let retryDelay = 1500 * (attempt + 1) + Math.floor(Math.random() * 500);
+    let retryDelay = 1500 * 2 ** attempt;
     const requestController = new AbortController();
     const abort = () => requestController.abort(signal.reason);
     signal.addEventListener('abort', abort, { once: true });
@@ -40,7 +40,7 @@ export async function pretestRequest<T>(url: string, method: 'GET' | 'POST', sig
       if (response.ok) return await response.json() as T;
       const payload = await response.json().catch(() => ({})) as { code?: string };
       error = new PretestRequestError(payload.code ?? 'LOAD_FAILED', response.status);
-      if (![429, 500, 502, 503, 504].includes(response.status) || attempt >= 2) throw error;
+      if (![500, 502, 503, 504].includes(response.status) || attempt >= 2) throw error;
       const retryAfter = Number(response.headers.get('Retry-After'));
       if (retryAfter > 0) retryDelay = Math.max(retryDelay, Math.min(retryAfter * 1000, 10000));
     } catch (caught) {
@@ -52,6 +52,7 @@ export async function pretestRequest<T>(url: string, method: 'GET' | 'POST', sig
     }
     // Only network errors and explicitly transient responses reach this delay.
     if (!error) throw new Error('Missing request error');
-    await pause(retryDelay, signal);
+    // Add jitter after Retry-After so waiting clients do not all hit D1 again at once.
+    await pause(retryDelay + Math.floor(Math.random() * 2000), signal);
   }
 }

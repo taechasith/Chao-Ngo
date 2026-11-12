@@ -27,12 +27,9 @@ export function CasePretestGate({ children, subgameId }: { children: ReactNode; 
       try {
         const url = `/api/questionnaires/pretest:${subgameId}/sessions`;
         type Payload = { questionnaire: Omit<LiveForm, 'sessionId' | 'completed' | 'responses'>; sessionId: string | null; completed?: boolean; responses: Record<string, unknown>; previousForms?: LiveForm[] };
-        let payload = await pretestRequest<Payload>(url, 'GET', controller.signal);
+        const payload = await pretestRequest<Payload>(url, 'POST', controller.signal);
+        if (controller.signal.aborted) return;
         if (payload.completed) { setReady(true); return; }
-        if (!payload.sessionId) {
-          payload = await pretestRequest<Payload>(url, 'POST', controller.signal);
-          if (payload.completed) { setReady(true); return; }
-        }
         if (!payload.sessionId) throw new Error('ยังเปิดแบบทดสอบไม่ได้ กรุณาลองอีกครั้ง');
         const sessionId = payload.sessionId;
         const initial = { ...payload.responses, ...saver.restore(sessionId, payload.questionnaire.questions.map(q => q.id)) };
