@@ -37,6 +37,7 @@ beforeAll(async()=>{
   await env.DB.prepare("INSERT INTO questionnaire_sessions(id,user_id,questionnaire_id,completed_at) VALUES ('cq2-old-receipt',?,'questionnaire-submission-ka-maimee-v3',CURRENT_TIMESTAMP)").bind(owner).run();
   await env.DB.prepare("INSERT INTO responses(id,session_id,question_id,value_json) SELECT 'cq2-old-answer','cq2-old-receipt',id,'\"Original answer\"' FROM questions WHERE questionnaire_id='questionnaire-submission-ka-maimee-v3' AND question_key='case_summary'").run();
   await env.DB.batch(unstable_splitSqlQuery(await readFile('migrations/0023_question_pack_v2.sql','utf8')).map(sql=>env.DB.prepare(sql)));
+  await env.DB.batch(unstable_splitSqlQuery(await readFile('migrations/0024_submission_completion_jobs.sql','utf8')).map(sql=>env.DB.prepare(sql)));
 },30000);
 afterAll(async()=>{await mf?.dispose();});
 it('returns a retryable response when D1 cannot load or start a pretest', async () => {

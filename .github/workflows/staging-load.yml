@@ -24,7 +24,13 @@ jobs:
         run: |
           set -euo pipefail
           for cohort in 100 300 1000; do
-            node scripts/staging-load.mjs "$cohort"
+            if ! node scripts/staging-load.mjs "$cohort"; then
+              result="qa-results/$cohort/results.json"
+              if [ -f "$result" ] && jq -e 'any(.phases[]; .name == "finalize_burst_fifo" and .failed > 0) and all(.cleanup[]; .status == "removed")' "$result" >/dev/null; then
+                node scripts/staging-load.mjs "$cohort" 6 || true
+              fi
+              exit 1
+            fi
           done
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

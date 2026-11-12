@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 
+import { consentVersion, dataNoticeVersion } from "./research-consent-copy";
 import { getSubmissionRequirementsForSubgames } from "./submissions/requirements";
 
 const autoPassConfigKey = "completion_auto_pass_submissions";
@@ -20,29 +21,35 @@ type SubmittedSubgame = {
   subgame_id: string;
 };
 
-function insertAchievement(userId: string, key: string, scope: string, subgameId?: string) {
-  return env.DB.prepare(
+export type CompletionLease = { revision: string; token: string };
+
+export async function recalculateCompletionForUser(userId: string, lease?: CompletionLease): Promise<CompletionState> {
+  // Recheck eligibility and the claimed revision in the same transaction as every projection write.
+  const guard = lease ? `EXISTS (SELECT 1 FROM completion_jobs j JOIN "user" u ON u.id = j.user_id
+    WHERE j.user_id = ? AND j.revision = ? AND j.lease_token = ? AND j.lease_until > unixepoch()
+      AND u.emailVerified = 1 AND u.research_deletion_pending_at IS NULL
+      AND (u.research_retention_expires_at IS NULL OR u.research_retention_expires_at > CURRENT_TIMESTAMP)
+      AND EXISTS (SELECT 1 FROM consent_records c WHERE c.user_id = u.id AND c.research_participation = 1
+        AND c.consent_version = ? AND c.data_notice_version = ? AND c.withdrawn_at IS NULL))` : "1";
+  const guardArgs = lease ? [userId, lease.revision, lease.token, consentVersion, dataNoticeVersion] : [];
+  const guardedWrite = (sql: string, ...params: (string | null)[]) =>
+    env.DB.prepare(sql.replace("/* eligibility */", guard)).bind(...params, ...guardArgs);
+  const insertAchievement = (key: string, scope: string, subgameId?: string) => guardedWrite(
     `INSERT OR IGNORE INTO achievements (id, user_id, achievement_key, subgame_id, scope_key, metadata_json)
-     VALUES (?, ?, ?, ?, ?, '{}')`,
-  ).bind(crypto.randomUUID(), userId, key, subgameId ?? null, scope);
-}
-
-function insertPlayerNotification(userId: string, key: string, kind: string, body: string) {
-  return env.DB.prepare(
+     SELECT ?, ?, ?, ?, ?, '{}' WHERE /* eligibility */`,
+    crypto.randomUUID(), userId, key, subgameId ?? null, scope,
+  );
+  const insertPlayerNotification = (key: string, kind: string, body: string) => guardedWrite(
     `INSERT OR IGNORE INTO player_notifications (id, user_id, notification_key, kind, body_th)
-     VALUES (?, ?, ?, ?, ?)`,
-  ).bind(crypto.randomUUID(), userId, key, kind, body);
-}
-
-function insertAdminNotification(userId: string, key: string, type: string, resourceType: string, resourceId: string) {
-  return env.DB.prepare(
-    `INSERT OR IGNORE INTO admin_notifications (
-       id, notification_key, user_id, type, resource_type, resource_id, payload_json
-     ) VALUES (?, ?, ?, ?, ?, ?, '{}')`,
-  ).bind(crypto.randomUUID(), key, userId, type, resourceType, resourceId);
-}
-
-export async function recalculateCompletionForUser(userId: string): Promise<CompletionState> {
+     SELECT ?, ?, ?, ?, ? WHERE /* eligibility */`,
+    crypto.randomUUID(), userId, key, kind, body,
+  );
+  const insertAdminNotification = (key: string, type: string, resourceType: string, resourceId: string) => guardedWrite(
+    `INSERT OR IGNORE INTO admin_notifications
+       (id, notification_key, user_id, type, resource_type, resource_id, payload_json)
+     SELECT ?, ?, ?, ?, ?, ?, '{}' WHERE /* eligibility */`,
+    crypto.randomUUID(), key, userId, type, resourceType, resourceId,
+  );
   const [playableRows, userRows, submittedRows] = await env.DB.batch([
     env.DB.prepare(
       `SELECT subgames.id, subgames.required_for_completion, subgames.title
@@ -114,29 +121,28 @@ export async function recalculateCompletionForUser(userId: string): Promise<Comp
   for (const subgame of playableSubgames) {
     if (!qualifyingIds.has(subgame.id)) {
       // A newer draft or requested revision supersedes the previous completion.
-      writes.push(env.DB.prepare(`UPDATE subgame_progress SET status = 'in_progress', completed_at = NULL
+      writes.push(guardedWrite(`UPDATE subgame_progress SET status = 'in_progress', completed_at = NULL
         WHERE user_id = ? AND subgame_id = ? AND status = 'completed'
-          AND EXISTS (SELECT 1 FROM submissions WHERE user_id = ? AND subgame_id = ?)`)
-        .bind(userId, subgame.id, userId, subgame.id));
+          AND EXISTS (SELECT 1 FROM submissions WHERE user_id = ? AND subgame_id = ?)
+          AND /* eligibility */`, userId, subgame.id, userId, subgame.id));
       continue;
     }
-    writes.push(env.DB.prepare(
+    writes.push(guardedWrite(
       `INSERT INTO subgame_progress (user_id, subgame_id, status, started_at, last_activity_at, completed_at)
-       VALUES (?, ?, 'completed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+       SELECT ?, ?, 'completed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP WHERE /* eligibility */
        ON CONFLICT(user_id, subgame_id) DO UPDATE SET
          status = 'completed', last_activity_at = CURRENT_TIMESTAMP,
-         completed_at = COALESCE(subgame_progress.completed_at, CURRENT_TIMESTAMP)`,
-    ).bind(userId, subgame.id));
-    writes.push(insertAchievement(userId, "subgame_completed", subgame.id, subgame.id));
-    writes.push(insertPlayerNotification(userId, `subgame-completed:${userId}:${subgame.id}`, "subgame_completed", `บันทึกว่าคุณสืบคดี ${subgame.title} เสร็จแล้ว`));
+         completed_at = COALESCE(subgame_progress.completed_at, CURRENT_TIMESTAMP)`, userId, subgame.id));
+    writes.push(insertAchievement("subgame_completed", subgame.id, subgame.id));
+    writes.push(insertPlayerNotification(`subgame-completed:${userId}:${subgame.id}`, "subgame_completed", `บันทึกว่าคุณสืบคดี ${subgame.title} เสร็จแล้ว`));
   }
 
   const allRequiredSubgamesCompleted = requiredSubgames.length > 0 && requiredSubgames.every((subgame) => qualifyingIds.has(subgame.id));
   const letterEligible = Boolean(allRequiredSubgamesCompleted && user?.email_verified && activeConsent && !needsRevision);
 
   if (allRequiredSubgamesCompleted) {
-    writes.push(insertAchievement(userId, "all_required_subgames_completed", "all-required-subgames"));
-    writes.push(insertPlayerNotification(userId, `all-cases-completed:${userId}`, "all_cases_completed", "คุณสืบครบทุกคดีที่ระบบกำหนดไว้แล้ว"));
+    writes.push(insertAchievement("all_required_subgames_completed", "all-required-subgames"));
+    writes.push(insertPlayerNotification(`all-cases-completed:${userId}`, "all_cases_completed", "คุณสืบครบทุกคดีที่ระบบกำหนดไว้แล้ว"));
   }
 
   const snapshot = JSON.stringify({
@@ -147,27 +153,25 @@ export async function recalculateCompletionForUser(userId: string): Promise<Comp
     requiredSubgameIds: requiredSubgames.map((subgame) => subgame.id),
   });
   if (letterEligible) {
-    writes.push(env.DB.prepare(
+    writes.push(guardedWrite(
       `INSERT INTO thank_you_letters (id, user_id, status, eligibility_snapshot_json, eligible_at)
-       VALUES (?, ?, 'eligible', ?, CURRENT_TIMESTAMP)
+       SELECT ?, ?, 'eligible', ?, CURRENT_TIMESTAMP WHERE /* eligibility */
        ON CONFLICT(user_id) DO UPDATE SET
          status = CASE WHEN thank_you_letters.status = 'emailed' THEN 'emailed' ELSE 'eligible' END,
          eligibility_snapshot_json = excluded.eligibility_snapshot_json,
          eligible_at = COALESCE(thank_you_letters.eligible_at, CURRENT_TIMESTAMP),
-         updated_at = CURRENT_TIMESTAMP`,
-    ).bind(crypto.randomUUID(), userId, snapshot));
-    writes.push(insertAchievement(userId, "thank_you_letter_eligible", "thank-you-letter"));
-    writes.push(insertPlayerNotification(userId, `letter-eligible:${userId}`, "letter_eligible", "คุณมีคุณสมบัติตามเกณฑ์รับจดหมายขอบคุณแล้ว"));
-    writes.push(insertAdminNotification(userId, `letter-eligible:${userId}`, "letter_eligible", "thank_you_letter", userId));
+         updated_at = CURRENT_TIMESTAMP`, crypto.randomUUID(), userId, snapshot));
+    writes.push(insertAchievement("thank_you_letter_eligible", "thank-you-letter"));
+    writes.push(insertPlayerNotification(`letter-eligible:${userId}`, "letter_eligible", "คุณมีคุณสมบัติตามเกณฑ์รับจดหมายขอบคุณแล้ว"));
+    writes.push(insertAdminNotification(`letter-eligible:${userId}`, "letter_eligible", "thank_you_letter", userId));
   } else {
-    writes.push(env.DB.prepare(
+    writes.push(guardedWrite(
       `INSERT INTO thank_you_letters (id, user_id, status, eligibility_snapshot_json)
-       VALUES (?, ?, 'pending', ?)
+       SELECT ?, ?, 'pending', ? WHERE /* eligibility */
        ON CONFLICT(user_id) DO UPDATE SET
          status = CASE WHEN thank_you_letters.status = 'emailed' THEN 'emailed' ELSE 'pending' END,
          eligibility_snapshot_json = excluded.eligibility_snapshot_json,
-         updated_at = CURRENT_TIMESTAMP`,
-    ).bind(crypto.randomUUID(), userId, snapshot));
+         updated_at = CURRENT_TIMESTAMP`, crypto.randomUUID(), userId, snapshot));
   }
 
   await env.DB.batch(writes);

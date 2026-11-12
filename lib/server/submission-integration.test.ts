@@ -6,6 +6,7 @@ import { unstable_splitSqlQuery } from "wrangler";
 import { env } from "./testing/cloudflare";
 import { aiChatUploadConsentVersion, consentVersion, dataNoticeVersion } from "./research-consent-copy";
 import { cleanExpiredResearch } from "./research-cleanup";
+import { processCompletionJobs } from "./completion-jobs";
 import { recalculateCompletionForUser } from "./completion";
 import { isWithinPlayerMutationLimit } from "./request-limits";
 import { GET as getSubmission, POST as startSubmission } from "../../app/api/submissions/route";
@@ -14,7 +15,7 @@ import { POST as acknowledge, DELETE as revokeAcknowledgement } from "../../app/
 import { POST as upload } from "../../app/api/submissions/[submissionId]/uploads/route";
 import { POST as revise } from "../../app/api/submissions/[submissionId]/revise/route";
 import { PATCH as preparation } from "../../app/api/submissions/[submissionId]/preparation/route";
-import { POST as finalize } from "../../app/api/submissions/[submissionId]/finalize/route";
+import { GET as getReceipt, POST as finalize } from "../../app/api/submissions/[submissionId]/finalize/route";
 import { PUT as answer } from "../../app/api/questionnaire-sessions/[sessionId]/responses/route";
 import { POST as complete } from "../../app/api/questionnaire-sessions/[sessionId]/complete/route";
 import { GET as getQuestionnaire, POST as startQuestionnaire } from "../../app/api/questionnaires/[key]/sessions/route";
@@ -63,7 +64,7 @@ beforeAll(async () => {
   env.DB = await mf.getD1Database("DB") as unknown as D1Database;
   env.PRIVATE_UPLOADS = await mf.getR2Bucket("PRIVATE_UPLOADS") as unknown as R2Bucket;
   env.PUBLIC_ASSETS = await mf.getR2Bucket("PUBLIC_ASSETS") as unknown as R2Bucket;
-  for (const name of (await readdir("migrations")).filter((name) => name.endsWith(".sql") && name < "0023").sort()) {
+  for (const name of (await readdir("migrations")).filter((name) => name.endsWith(".sql") && name !== "0023_question_pack_v2.sql").sort()) {
     const statements = unstable_splitSqlQuery(await readFile(`migrations/${name}`, "utf8"));
     await env.DB.batch(statements.map((statement) => env.DB.prepare(statement)));
   }
@@ -247,7 +248,21 @@ describe("B6 legacy instruments retain real D1/private R2 contracts", () => {
   it("finalizes once, restores the receipt and anchors retention to submission", async () => {
     expect(await (await finalize(request("POST", undefined, owner), context(id))).json()).toMatchObject({ code: "AI_COMPANION_REQUIRED" });
     expect((await preparation(request("PATCH", { aiCompanionUsed: true, additionalAiLinks: [] }, owner), context(id))).status).toBe(200);
-    expect((await finalize(request(), context(id))).status).toBe(201);
+    const concurrent = await Promise.all([finalize(request(), context(id)), finalize(request(), context(id))]);
+    expect(concurrent.map(response => response.status).sort()).toEqual([200, 201]);
+    const receipts = await Promise.all(concurrent.map(async response => {
+      const { status, ...receipt } = await response.json() as Record<string, unknown>;
+      expect(["submitted", "already_submitted"]).toContain(status);
+      return receipt;
+    }));
+    expect(receipts[0]).toEqual(receipts[1]);
+    expect(receipts[0]).toEqual({ submissionId: id, submissionStatus: "submitted", submittedAt: expect.any(String) });
+    expect((await getReceipt(request("GET", undefined, stranger), context(id))).status).toBe(404);
+    expect((await getReceipt(request("GET", undefined, null), context(id))).status).toBe(401);
+    const readback = await getReceipt(request("GET"), context(id));
+    expect(readback.headers.get("Cache-Control")).toBe("no-store");
+    expect(await readback.json()).toEqual(receipts[0]);
+    expect(await env.DB.prepare("SELECT COUNT(*) n FROM completion_jobs WHERE user_id = ?").bind(owner).first()).toEqual({ n: 1 });
     const first = await env.DB.prepare('SELECT research_retention_expires_at FROM "user" WHERE id = ?').bind(owner).first();
     expect(first?.research_retention_expires_at).toMatch(/^2029-/);
     expect((await preparation(request("PATCH", { aiCompanionUsed: false, additionalAiLinks: [] }), context(id))).status).toBe(409);
@@ -406,10 +421,7 @@ describe("onboarding saves personal data and resumes without writing consent aga
     expect((await complete(request("POST",undefined,user),sessionContext(form.sessionId))).status).toBe(200);
     expect(await (await getResearchProfile(request("GET",undefined,user))).json()).toMatchObject({profile:{age}});
   });
-  it.each([
-    "D1_ERROR: D1 DB is overloaded. Requests queued for too long.",
-    "D1_ERROR: Network connection lost.",
-  ])("recovers %s after a committed finalize without duplicating the receipt", async (errorMessage) => {
+  it.each([false, true])("recovers a lost commit response (commit=%s) without duplicating the receipt", async (didCommit) => {
     const user = `d1-retry-${crypto.randomUUID()}`;
     await env.DB.prepare('INSERT INTO "user" (id, name, email, emailVerified, createdAt, updatedAt) VALUES (?, ?, ?, 1, 0, 0)')
       .bind(user, "QA overload", `${user}@example.test`).run();
@@ -425,27 +437,58 @@ describe("onboarding saves personal data and resumes without writing consent aga
     expect((await upload(fileRequest(pdf,"application/pdf","QA-ai.pdf",user), context(id))).status).toBe(201);
     expect((await preparation(request("PATCH", { aiCompanionUsed: true, additionalAiLinks: [] }, user), context(id))).status).toBe(200);
     const database = env.DB;
+    let isCommit = false;
     env.DB = {
       prepare(sql: string) {
-        if (sql.includes("SELECT subgames.id, subgames.required_for_completion")) {
-          throw new Error(errorMessage);
-        }
+        if (sql.includes("INSERT INTO completion_jobs")) isCommit = true;
         return database.prepare(sql);
       },
-      batch: database.batch.bind(database),
+      async batch(statements: D1PreparedStatement[]) {
+        if (!isCommit) return database.batch(statements);
+        if (didCommit) await database.batch(statements);
+        throw new Error("D1_ERROR: Network connection lost.");
+      },
     } as D1Database;
     try {
-      const busy = await finalize(request("POST", undefined, user), context(id));
-      expect(busy.status).toBe(503);
-      expect(await busy.json()).toEqual({ code: "DATABASE_BUSY" });
-      expect(await database.prepare("SELECT status FROM submissions WHERE id = ?").bind(id).first()).toEqual({ status: "submitted" });
+      const uncertain = await finalize(request("POST", undefined, user), context(id));
+      expect(uncertain.status).toBe(503);
+      expect(await uncertain.json()).toEqual({ code: "DATABASE_BUSY" });
     } finally {
       env.DB = database;
     }
-    expect((await finalize(request("POST", undefined, user), context(id))).status).toBe(200);
+    const receipt = await getReceipt(request("GET", undefined, user), context(id));
+    expect(await receipt.json()).toMatchObject({ submissionId: id, submissionStatus: didCommit ? "submitted" : "draft" });
+    expect((await finalize(request("POST", undefined, user), context(id))).status).toBe(didCommit ? 200 : 201);
+    expect(await database.prepare("SELECT COUNT(*) n FROM completion_jobs WHERE user_id = ?").bind(user).first()).toEqual({ n: 1 });
     expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM activity_events WHERE user_id = ? AND event_type = 'submission_finalized'")
       .bind(user).first()).toEqual({ n: 1 });
     expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM submissions WHERE user_id = ?").bind(user).first()).toEqual({ n: 1 });
+  });
+
+  it("reclaims an expired lease, retries failed completion, and skips withdrawn data", async () => {
+    const db = env.DB;
+    const ids = (await db.prepare("SELECT user_id FROM completion_jobs WHERE user_id LIKE 'd1-retry-%' ORDER BY user_id").all<{user_id:string}>()).results;
+    expect(ids).toHaveLength(2);
+    const eligible = ids[0].user_id, withdrawn = ids[1].user_id;
+    await db.prepare("UPDATE consent_records SET withdrawn_at = CURRENT_TIMESTAMP WHERE user_id = ?").bind(withdrawn).run();
+    await db.prepare("UPDATE completion_jobs SET lease_token='expired', lease_until=unixepoch()-1 WHERE user_id = ?").bind(eligible).run();
+    env.DB = {
+      prepare(sql: string) {
+        if (sql.includes("SELECT subgames.id, subgames.required_for_completion")) throw new Error("projection unavailable");
+        return db.prepare(sql);
+      },
+    } as D1Database;
+    try {
+      expect(await processCompletionJobs(db)).toBeGreaterThanOrEqual(2);
+      expect(await db.prepare("SELECT attempts, lease_token, next_attempt_at > unixepoch() AS delayed FROM completion_jobs WHERE user_id = ?")
+        .bind(eligible).first()).toEqual({ attempts: 1, lease_token: null, delayed: 1 });
+    } finally { env.DB = db; }
+    await db.prepare("UPDATE completion_jobs SET next_attempt_at=0").run();
+    expect(await processCompletionJobs(db)).toBeGreaterThanOrEqual(2);
+    expect(await db.prepare("SELECT COUNT(*) n FROM completion_jobs WHERE user_id IN (?, ?)").bind(eligible, withdrawn).first()).toEqual({ n: 0 });
+    expect(await db.prepare("SELECT COUNT(*) n FROM subgame_progress WHERE user_id = ? AND status = 'completed'").bind(eligible).first()).toEqual({ n: 1 });
+    expect(await db.prepare("SELECT COUNT(*) n FROM player_notifications WHERE user_id = ?").bind(withdrawn).first()).toEqual({ n: 0 });
+    expect(await db.prepare("SELECT COUNT(*) n FROM thank_you_letters WHERE user_id = ?").bind(withdrawn).first()).toEqual({ n: 0 });
   });
 
 });
@@ -464,7 +507,7 @@ describe("admin publication racing a player submit",()=>{
     expect((await preparation(request("PATCH", { aiCompanionUsed: true, additionalAiLinks: [] }, user), context(id))).status).toBe(200);
     const db=env.DB;let published=false;
     env.DB={prepare:db.prepare.bind(db),batch:async(statements:D1PreparedStatement[])=>{
-      if(statements.length===4&&!published) {
+      if(statements.length===5&&!published) {
         published=true;
         await db.batch([
           db.prepare("UPDATE questionnaires SET published=0 WHERE id=?").bind(old),

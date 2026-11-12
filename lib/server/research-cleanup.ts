@@ -30,6 +30,7 @@ export async function cleanExpiredResearch({ DB, PRIVATE_UPLOADS }: RetentionBin
       await DB.batch([
         DB.prepare("DELETE FROM activity_events WHERE user_id = ?").bind(id),
         DB.prepare("DELETE FROM submissions WHERE user_id = ?").bind(id),
+        DB.prepare("DELETE FROM completion_jobs WHERE user_id = ?").bind(id),
         DB.prepare("DELETE FROM questionnaire_sessions WHERE user_id = ?").bind(id),
         DB.prepare("DELETE FROM achievements WHERE user_id = ?").bind(id),
         DB.prepare("DELETE FROM player_notifications WHERE user_id = ?").bind(id),

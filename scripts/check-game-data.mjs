@@ -24,6 +24,7 @@ const queries = [
   `SELECT COUNT(*) AS incompatible_file_policies FROM subgame_submission_requirements
     WHERE answer_mode <> 'text' OR allowed_artifact_extensions_json <> '[]' OR requires_ai_chat_pdf <> 1
       OR COALESCE(json_extract(requirements_json, '$.requiresAnswerAttachment'), 1) <> 0`,
+  "PRAGMA table_info(completion_jobs)",
 ];
 const results = [];
 for (const query of queries) {
@@ -59,6 +60,10 @@ if (!rows[5].some(row => row.name === "0021_submission_ai_preparation.sql") ||
 }
 if (!rows[5].some(row => row.name === "0022_ai_pdf_only.sql")) {
   console.error("Apply reviewed migration 0022_ai_pdf_only.sql before deploying the AI PDF-only file policy."); process.exit(1);
+}
+if (!rows[5].some(row => row.name === "0024_submission_completion_jobs.sql") ||
+    !["user_id", "revision", "lease_until"].every(name => rows[9].some(column => column.name === name))) {
+  console.error("Apply reviewed migration 0024_submission_completion_jobs.sql before deploying submission receipts."); process.exit(1);
 }
 if (rows[8].some(row => row.incompatible_file_policies !== 0)) {
   console.error("Stored submission file policies must require only an AI PDF; stop before deploying."); process.exit(1);

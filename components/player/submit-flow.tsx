@@ -1,5 +1,6 @@
 "use client";
 
+import { readSubmissionReceipt, sendSubmission, type ReceiptResult } from "../../lib/client/submission-receipt";
 import { fetchWithDatabaseRetry } from "../../lib/client/database-retry";
 
 import { caseRoutes, scaleDescription } from "../../lib/question-pack";
@@ -215,6 +216,8 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<Partial<Record<UploadKind, SelectedFile>>>({});
   const [saving, setSaving] = useState(false);
+  const [receiptRecovery, setReceiptRecovery] = useState<"unconfirmed" | "reauth" | null>(null);
+  const sending = useRef(false);
   const [aiPdfNotice, setAiPdfNotice] = useState("");
   const [researchReady, setResearchReady] = useState<boolean | null>(null);
   const { saver, status: answerSaveState, pendingCount } = useAnswerAutosave(setMessage);
@@ -255,6 +258,7 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
     setLoading(true);
     setMessage("");
     setSelectedFiles({});
+    setReceiptRecovery(null);
     completedSessions.current.clear();
     try {
       const response = await fetchWithDatabaseRetry("/api/submissions", {
@@ -470,13 +474,49 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
     }
   }
 
-  async function finalize() {
-    if (await live.refresh()) return;
+  function applyReceipt(current: SubmissionPayload, result: ReceiptResult) {
+    if (result.kind === "received") {
+      setReceiptRecovery(null);
+      setSubmission(value => value?.submissionId === current.submissionId ? {
+        ...value, status: result.status,
+        preparation: { aiCompanionUsed: ai.aiCompanionUsed, additionalAiLinks: ai.linksText.split(/\r?\n/).map(link => link.trim()).filter(Boolean) },
+        answerForm: value.answerForm ? { ...value.answerForm, responses: { ...answersRef.current } } : null,
+        posttestForm: value.posttestForm ? { ...value.posttestForm, responses: { ...answersRef.current } } : null,
+      } : value);
+      setMessage("");
+    } else if (result.kind === "draft") {
+      setReceiptRecovery(null);
+      setMessage("งานยังเป็นแบบร่าง คำตอบและไฟล์ที่บันทึกไว้ยังอยู่ รอสักครู่แล้วกดส่งอีกครั้งได้");
+    } else if (result.kind === "reauth") {
+      setReceiptRecovery("reauth");
+      setMessage("เซสชันหมดอายุ เข้าสู่ระบบอีกครั้งเพื่อกลับมาตรวจงานเดิม");
+    } else if (result.kind === "unconfirmed") {
+      setReceiptRecovery("unconfirmed");
+      setMessage("ยังยืนยันผลการส่งไม่ได้ กดตรวจสถานะก่อนลองส่งใหม่");
+    } else if (result.kind === "rejected") {
+      setReceiptRecovery(null);
+      setMessage(thaiError(result.code));
+    }
+  }
+
+  async function checkReceipt() {
     const current = submissionRef.current;
-    if (!current) return;
+    if (!current || sending.current) return;
+    sending.current = true;
+    setSaving(true);
+    try { applyReceipt(current, await readSubmissionReceipt(current.submissionId)); }
+    finally { sending.current = false; setSaving(false); }
+  }
+
+  async function finalize() {
+    if (sending.current || receiptRecovery) return;
+    sending.current = true;
     setSaving(true);
     setMessage("");
     try {
+      if (await live.refresh()) return;
+      const current = submissionRef.current;
+      if (!current) return;
       if (!ai.aiCompanionUsed) { setMessage("ต้องใช้ AI คู่คิดที่กำหนด และยืนยันการใช้งานด้านบนก่อนส่งคำตอบ"); return; }
       if (!(await ai.flush())) { setMessage("ยังบันทึกข้อมูล AI ไม่ครบ กรุณาตรวจลิงก์หรือลองบันทึกใหม่ก่อนส่ง"); return; }
       for (const form of [current.answerForm, current.posttestForm]) {
@@ -490,24 +530,11 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
         !(await completeForm(current.answerForm, current.requirements.requiredAnswerQuestionKeys))
       ) return;
       if (current.requirements.requiresPosttest && !(await completeForm(current.posttestForm))) return;
-      const response = await fetchWithDatabaseRetry(`/api/submissions/${current.submissionId}/finalize`, {
-        credentials: "same-origin",
-        method: "POST",
-      });
-      const result = await response.json() as { code?: string; status?: string };
-      if (!response.ok) {
-        setMessage(thaiError(result.code ?? ""));
-        return;
-      }
-      setSubmission((value) => value ? {
-        ...value, status: "submitted", preparation: { aiCompanionUsed: ai.aiCompanionUsed, additionalAiLinks: ai.linksText.split(/\r?\n/).map(link => link.trim()).filter(Boolean) },
-        answerForm: value.answerForm ? { ...value.answerForm, responses: { ...answersRef.current } } : null,
-        posttestForm: value.posttestForm ? { ...value.posttestForm, responses: { ...answersRef.current } } : null,
-      } : value);
-      setMessage("ส่งคำตอบแล้ว ระบบบันทึกความคืบหน้าของคุณเรียบร้อย");
+      applyReceipt(current, await sendSubmission(current.submissionId));
     } catch {
-      setMessage("ส่งคำตอบไม่ได้ในขณะนี้ ลองอีกครั้งเมื่อเครือข่ายพร้อม");
+      setMessage("ยังเตรียมงานส่งไม่สำเร็จ ตรวจการเชื่อมต่อแล้วลองอีกครั้ง");
     } finally {
+      sending.current = false;
       setSaving(false);
     }
   }
@@ -724,9 +751,13 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
         {finalRequiresAi ? <p className="player-upload-state" role="status">{submission.uploads.aiChatPdf ? `ไฟล์ AI chat PDF: ${submission.uploads.aiChatPdf.original_name}` : "ยังไม่ได้แนบไฟล์ PDF"}</p> : null}
         {!ai.aiCompanionUsed ? <p className="player-upload-state">ยังไม่ได้ยืนยันการใช้ AI คู่คิดที่กำหนด <a className="underline" href="#submission-stage-ai-required">กลับไปยืนยันด้านบน</a></p> : null}
         {message ? <p aria-live="polite" className="mt-4 text-sm text-red-200">{message}</p> : null}
-        <InvestigativeAction className="mt-6 w-full sm:w-auto" disabled={!ai.aiCompanionUsed || ai.pending || live.updating || saving || uploading || acknowledgementPending || (finalRequiresAi && (!acknowledged || !submission.uploads.aiChatPdf))} onClick={() => void finalize()}>
-          {saving ? "กำลังส่งคำตอบ…" : "ส่งคำตอบ"}
-        </InvestigativeAction>
+        {receiptRecovery === "reauth"
+          ? <Link className="player-button player-button--primary mt-6" href={`/login?next=${encodeURIComponent(`/submit?subgameId=${encodeURIComponent(subgameId)}`)}`}>เข้าสู่ระบบเพื่อกลับมาตรวจงาน</Link>
+          : <InvestigativeAction className="mt-6 w-full sm:w-auto"
+              disabled={saving || (!receiptRecovery && (!ai.aiCompanionUsed || ai.pending || live.updating || uploading || acknowledgementPending || (finalRequiresAi && (!acknowledged || !submission.uploads.aiChatPdf))))}
+              onClick={() => void (receiptRecovery ? checkReceipt() : finalize())}>
+              {receiptRecovery ? saving ? "กำลังตรวจสถานะ…" : "ตรวจสถานะการส่ง" : saving ? "กำลังส่งคำตอบ…" : "ส่งคำตอบ"}
+            </InvestigativeAction>}
         <p className="mt-3 text-xs leading-5 text-white/50">ยังไม่มั่นใจ? กลับไปเปิดหลักฐานได้ทุกเมื่อ</p>
       </section>
     </div>

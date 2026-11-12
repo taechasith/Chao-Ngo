@@ -6,7 +6,7 @@ import { requireResearchParticipant } from "../../../../../lib/server/research-a
 import { aiChatUploadConsentVersion } from "../../../../../lib/server/research-consent-copy";
 import { getResearchRetentionYears } from "../../../../../lib/server/research-retention";
 import { isSameOriginRequest } from "../../../../../lib/server/request-security";
-import { recalculateCompletionForUser } from "../../../../../lib/server/completion";
+import { finalizeDiagnosticsEnabled, logFinalize } from "../../../../../lib/server/finalize-diagnostics";
 import { isWithinPlayerMutationLimit } from "../../../../../lib/server/request-limits";
 import { isHttpsShareUrl, validateQuestionValue, type QuestionType } from "../../../../../lib/server/questionnaires/validation";
 import { getSubmissionRequirements, type SubmissionRequirements } from "../../../../../lib/server/submissions/requirements";
@@ -92,7 +92,8 @@ function finalizationUpdate(
           AND EXISTS (SELECT 1 FROM consent_records WHERE user_id = submissions.user_id
             AND consent_version = ? AND research_participation = 1 AND withdrawn_at IS NULL)
           AND EXISTS (SELECT 1 FROM "user" WHERE id = submissions.user_id AND research_deletion_pending_at IS NULL
-            AND (research_retention_expires_at IS NULL OR research_retention_expires_at > CURRENT_TIMESTAMP))`,
+            AND (research_retention_expires_at IS NULL OR research_retention_expires_at > CURRENT_TIMESTAMP))
+      RETURNING id, status, submitted_at`,
     ).bind(submissionId, userId, answerSessionId, posttestSessionId, aiChatUploadConsentVersion, consentVersion);
   }
 
@@ -106,11 +107,32 @@ function finalizationUpdate(
         AND EXISTS (SELECT 1 FROM consent_records WHERE user_id = submissions.user_id
           AND consent_version = ? AND research_participation = 1 AND withdrawn_at IS NULL)
         AND EXISTS (SELECT 1 FROM "user" WHERE id = submissions.user_id AND research_deletion_pending_at IS NULL
-          AND (research_retention_expires_at IS NULL OR research_retention_expires_at > CURRENT_TIMESTAMP))`,
+          AND (research_retention_expires_at IS NULL OR research_retention_expires_at > CURRENT_TIMESTAMP))
+      RETURNING id, status, submitted_at`,
   ).bind(submissionId, userId, answerSessionId, posttestSessionId, consentVersion);
 }
 
-async function handlePOST(request: Request, context: RouteContext): Promise<Response> {
+function receipt(submission: { id: string; status: string; submitted_at: string | null }, status = 200) {
+  return response({
+    status: status === 201 ? "submitted" : "already_submitted",
+    submissionId: submission.id, submissionStatus: submission.status, submittedAt: submission.submitted_at,
+  }, status);
+}
+
+const isReceived = (status: string) => ["submitted", "accepted", "needs_revision"].includes(status);
+
+export const GET = withD1RetryableErrorHandling(async (request: Request, context: RouteContext) => {
+  const participant = await requireResearchParticipant(request);
+  if (participant instanceof Response) return participant;
+  const { submissionId } = await context.params;
+  const submission = await env.DB.prepare(
+    "SELECT id, status, submitted_at FROM submissions WHERE id = ? AND user_id = ?",
+  ).bind(submissionId, participant.userId).first<{ id: string; status: string; submitted_at: string | null }>();
+  if (!submission) return response({ code: "SUBMISSION_NOT_FOUND" }, 404);
+  return response({ submissionId: submission.id, submissionStatus: submission.status, submittedAt: submission.submitted_at });
+});
+
+async function handlePOST(request: Request, context: RouteContext, mark: (stage: string) => void): Promise<Response> {
   if (!isSameOriginRequest(request)) return response({ code: "CROSS_ORIGIN_REQUEST" }, 403);
   const participant = await requireResearchParticipant(request);
   if (participant instanceof Response) return participant;
@@ -118,7 +140,7 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
 
   const { submissionId } = await context.params;
   const submission = await env.DB.prepare(
-    `SELECT id, subgame_id, questionnaire_session_id, posttest_session_id, status, ai_companion_confirmed_at
+    `SELECT id, subgame_id, questionnaire_session_id, posttest_session_id, status, submitted_at, ai_companion_confirmed_at
        FROM submissions WHERE id = ? AND user_id = ?`,
   ).bind(submissionId, participant.userId).first<{
     id: string;
@@ -126,14 +148,14 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
     posttest_session_id: string | null;
     questionnaire_session_id: string | null;
     status: string;
+    submitted_at: string | null;
     subgame_id: string;
   }>();
   if (!submission) return response({ code: "SUBMISSION_NOT_FOUND" }, 404);
-  if (submission.status === "submitted" || submission.status === "accepted") {
-    return response({ completion: await recalculateCompletionForUser(participant.userId), status: "already_submitted" });
-  }
+  if (isReceived(submission.status)) return receipt(submission);
   if (submission.status !== "draft") return response({ code: "SUBMISSION_NOT_DRAFT" }, 409);
 
+  mark("validation");
   if (!(await hasRequiredCasePretest(env.DB, participant.userId, submission.subgame_id))) return response({ code: "CASE_PRETEST_REQUIRED" }, 409);
 
   const requirements = await getSubmissionRequirements(env.DB, submission.subgame_id, submission.questionnaire_session_id);
@@ -194,6 +216,8 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
   if (!submission.ai_companion_confirmed_at) return response({ code: "AI_COMPANION_REQUIRED" }, 400);
 
   const retentionYears = await getResearchRetentionYears();
+  const eventId = crypto.randomUUID();
+  mark("d1_commit");
   const results = await env.DB.batch([
     finalizationUpdate(
       submissionId,
@@ -214,23 +238,42 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
         WHERE subgames.id = ? AND changes() > 0`,
     ).bind(
       crypto.randomUUID(),
-      crypto.randomUUID(),
+      eventId,
       participant.userId,
       submission.subgame_id,
       JSON.stringify({ instrumentVersion: requirements.instrumentVersion }),
       submission.subgame_id,
     ),
+    env.DB.prepare(`INSERT INTO completion_jobs (user_id, revision)
+      SELECT user_id, event_id FROM activity_events WHERE event_id = ?
+      ON CONFLICT(user_id) DO UPDATE SET revision = excluded.revision,
+        attempts = 0, next_attempt_at = unixepoch()`).bind(eventId),
     env.DB.prepare(`UPDATE questionnaire_sessions SET closed_at = COALESCE(closed_at, CURRENT_TIMESTAMP)
       WHERE user_id = ? AND completed_at IS NULL AND id IN (?, ?)
       AND EXISTS (SELECT 1 FROM submissions WHERE id = ? AND user_id = ? AND status = 'submitted')`)
       .bind(participant.userId, submission.questionnaire_session_id, submission.posttest_session_id, submissionId, participant.userId),
   ]);
 
-  if ((results[0]?.meta.changes ?? 0) === 0) {
-    const current = await env.DB.prepare("SELECT status, ai_companion_confirmed_at FROM submissions WHERE id=? AND user_id=?").bind(submissionId,participant.userId).first<{status:string; ai_companion_confirmed_at:string|null}>();
+  mark("d1_committed");
+  const saved = results[0]?.results[0] as { id: string; status: string; submitted_at: string } | undefined;
+  if (!saved) {
+    const current = await env.DB.prepare("SELECT id, status, submitted_at, ai_companion_confirmed_at FROM submissions WHERE id=? AND user_id=?").bind(submissionId,participant.userId).first<{id:string; status:string; submitted_at:string|null; ai_companion_confirmed_at:string|null}>();
+    if (current && isReceived(current.status)) return receipt(current);
     return response({code:current?.status === "draft" ? !current.ai_companion_confirmed_at ? "AI_COMPANION_REQUIRED" : "QUESTIONNAIRE_UPDATED" : "SUBMISSION_ALREADY_FINALIZED"},409);
   }
-  return response({ completion: await recalculateCompletionForUser(participant.userId), retentionYears, status: "submitted" }, 201);
+  return receipt(saved, 201);
 }
 
-export const POST = withD1RetryableErrorHandling(handlePOST);
+export const POST = withD1RetryableErrorHandling(async (request: Request, context: RouteContext) => {
+  const trace = request.headers.get("x-finalize-trace") ?? "";
+  const started = performance.now();
+  let stage = "authorization";
+  try {
+    const result = await handlePOST(request, context, next => { stage = next; });
+    if (finalizeDiagnosticsEnabled(env)) logFinalize(trace, `${stage}:http_${result.status}`, performance.now() - started);
+    return result;
+  } catch (error) {
+    logFinalize(trace, stage, performance.now() - started, error);
+    throw error;
+  }
+});
