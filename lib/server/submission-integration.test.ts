@@ -95,13 +95,18 @@ describe("B6 legacy instruments retain real D1/private R2 contracts", () => {
   });
 
   it("creates one draft on retries and blocks ID substitution", async () => {
-    const result = await startSubmission(request("POST", { subgameId }));
-    expect(result.status).toBe(201);
-    const body = await result.json() as { submission: typeof draft & { submissionId: string } };
-    draft = body.submission;
-    id = body.submission.submissionId;
-    const retried = await (await startSubmission(request("POST", { subgameId }))).json() as { submission: { submissionId: string } };
-    expect(retried.submission.submissionId).toBe(id);
+    const attempts = await Promise.all([1, 2, 3].map(() => startSubmission(request("POST", { subgameId }))));
+    expect(attempts.map(attempt => attempt.status).sort()).toEqual([200, 200, 201]);
+    const payloads = await Promise.all(attempts.map(attempt => attempt.json())) as Array<{ submission: typeof draft & { submissionId: string } }>;
+    draft = payloads[0].submission;
+    id = payloads[0].submission.submissionId;
+    for (const payload of payloads) {
+      expect(payload.submission.submissionId).toBe(id);
+      expect(payload.submission.answerForm.sessionId).toBe(draft.answerForm.sessionId);
+      expect(payload.submission.posttestForm.sessionId).toBe(draft.posttestForm.sessionId);
+    }
+    expect(await env.DB.prepare("SELECT COUNT(*) n FROM questionnaire_sessions WHERE user_id = ?").bind(owner).first()).toEqual({ n: 2 });
+    expect(await env.DB.prepare("SELECT COUNT(*) n FROM activity_events WHERE user_id = ? AND event_type = 'submission_draft_saved'").bind(owner).first()).toEqual({ n: 1 });
     expect((await upload(fileRequest(pdf, "application/pdf", "chat.pdf", stranger), context(id))).status).toBe(404);
     expect((await finalize(request("POST", undefined, stranger), context(id))).status).toBe(404);
     expect((await answer(request("PUT", { questionId: draft.answerForm.questions[0].id, value: "stolen" }, stranger), sessionContext(draft.answerForm.sessionId))).status).toBe(404);

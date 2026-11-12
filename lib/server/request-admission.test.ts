@@ -49,10 +49,12 @@ describe("global finalization admission", () => {
     (await queued)();
   });
 
-  it("coordinates only finalization and completion POSTs, retaining the normal public/auth routes", () => {
+  it("coordinates draft, finalization and completion POSTs, retaining the normal public/auth routes", () => {
     expect(isFinalizationRequest(new Request("https://example.test/api/submissions/id/finalize", { method: "POST" }))).toBe(true);
     expect(isCoordinatedWrite(new Request("https://example.test/api/questionnaire-sessions/id/complete", { method: "POST" }))).toBe(true);
     expect(isCoordinatedWrite(new Request("https://example.test/api/questionnaire-sessions/id/complete"))).toBe(false);
+    expect(isCoordinatedWrite(new Request("https://example.test/api/submissions", { method: "POST" }))).toBe(true);
+    expect(isCoordinatedWrite(new Request("https://example.test/api/submissions"))).toBe(false);
     for (const path of ["/api/auth/sign-in/social", "/api/submissions/id/uploads", "/play", "/api/submissions/id/finalize/other"]) {
       expect(isCoordinatedWrite(new Request(`https://example.test${path}`, { method: "POST" }))).toBe(false);
     }

@@ -17,7 +17,7 @@ export type SubmissionRequirements = {
   requiresPosttest: boolean;
 };
 
-type RequirementRow = {
+export type RequirementRow = {
   allowed_answer_attachment_json?: unknown;
   allowed_artifact_extensions_json?: unknown;
   answer_mode?: unknown;
@@ -163,11 +163,38 @@ function isMissingRequirementsTable(error: unknown): boolean {
   return error instanceof Error && /no such table:\s*subgame_submission_requirements/i.test(error.message);
 }
 
-/**
- * Reads both the finalized NETLOOD CITY schema and the earlier additive-schema
- * proposal by selecting the row wholesale, rather than binding the client to a
- * particular column spelling. A missing row uses the conservative per-subgame fallback.
- */
+type AnswerInstrument = {
+  version: string;
+  questions: Array<{ key: string; type: string; required: boolean }>;
+};
+
+function historicalRequirements(subgameId: string, instrument?: AnswerInstrument | null): SubmissionRequirements | undefined {
+  if (!instrument || !kaSubgameIds.has(subgameId)) return;
+  const keys = new Set(instrument.questions.map(question => question.key));
+  if (keys.has("case_truth_model")) return kaFallbackRequirements();
+  if (keys.has("case_summary")) {
+    const link = keys.has("ai_chat_link");
+    return {
+      ...kaFallbackRequirements(),
+      instrumentVersion: instrument.version,
+      allowedAnswerAttachmentExtensions: ["pdf", "pptx"],
+      requiresAnswerAttachment: true,
+      requiresAnswerForm: true,
+      requiresAiChatLink: link,
+      requiresAiChatPdf: !link,
+      requiredAnswerQuestionKeys: instrument.questions.filter(question => question.required && ["short", "long"].includes(question.type))
+        .map(question => question.key),
+    };
+  }
+}
+
+export function submissionRequirementsFromSnapshot(
+  subgameId: string, row?: RequirementRow, instrument?: AnswerInstrument | null,
+): SubmissionRequirements {
+  const stored = row ? requirementsFromRow(subgameId, row) : fallbackSubmissionRequirements(subgameId);
+  return aiPdfOnly(historicalRequirements(subgameId, instrument) ?? stored);
+}
+
 async function readSubmissionRequirements(
   database: D1Database,
   subgameId: string,
@@ -178,16 +205,13 @@ async function readSubmissionRequirements(
     const instrument = await database.prepare(`SELECT q.id, q.version FROM questionnaire_sessions s
       JOIN questionnaires q ON q.id = s.questionnaire_id WHERE s.id = ?`).bind(answerSessionId).first<{ id: string; version: string }>();
     if (instrument) {
-      const questions = await database.prepare("SELECT question_key, type, required FROM questions WHERE questionnaire_id = ?").bind(instrument.id).all<{ question_key: string; type: string; required: number }>();
-      const keys = new Set(questions.results.map(q => q.question_key));
-      if (keys.has("case_truth_model")) return kaFallbackRequirements();
-      if (keys.has("case_summary")) {
-        const link = keys.has("ai_chat_link");
-        return { ...kaFallbackRequirements(), instrumentVersion: instrument.version,
-          allowedAnswerAttachmentExtensions: ["pdf", "pptx"], requiresAnswerAttachment: true,
-          requiresAnswerForm: true, requiresAiChatLink: link, requiresAiChatPdf: !link,
-          requiredAnswerQuestionKeys: questions.results.filter(q => q.required && ["short", "long"].includes(q.type)).map(q => q.question_key) };
-      }
+      const result = await database.prepare("SELECT question_key, type, required FROM questions WHERE questionnaire_id = ?")
+        .bind(instrument.id).all<{ question_key: string; type: string; required: number }>();
+      const historical = historicalRequirements(subgameId, {
+        version: instrument.version,
+        questions: result.results.map(question => ({ key: question.question_key, type: question.type, required: question.required === 1 })),
+      });
+      if (historical) return historical;
     }
   }
   try {

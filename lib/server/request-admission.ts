@@ -51,5 +51,5 @@ export function isFinalizationRequest(request: Request): boolean {
 
 export function isCoordinatedWrite(request: Request): boolean {
   if (request.method !== "POST") return false;
-  return isFinalizationRequest(request) || /^\/api\/questionnaire-sessions\/[^/]+\/complete\/?$/.test(new URL(request.url).pathname);
+  return isFinalizationRequest(request) || /^\/api\/submissions\/?$/.test(new URL(request.url).pathname) || /^\/api\/questionnaire-sessions\/[^/]+\/complete\/?$/.test(new URL(request.url).pathname);
 }
