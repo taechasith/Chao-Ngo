@@ -26,14 +26,22 @@ export class RequestAdmission {
     });
   }
 
-  async run<T>(work: () => Promise<T>): Promise<T> {
+  async reserve(): Promise<() => void> {
     await this.acquire();
-    try { return await work(); }
-    finally {
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
       const next = this.waiting.shift();
       if (next) { clearTimeout(next.timer); next.start(); }
       else this.active--;
-    }
+    };
+  }
+
+  async run<T>(work: () => Promise<T>): Promise<T> {
+    const release = await this.reserve();
+    try { return await work(); }
+    finally { release(); }
   }
 }
 

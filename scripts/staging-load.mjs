@@ -254,15 +254,25 @@ try {
     try {cli(["deploy","--config","dist/server/wrangler.stage.json"]);break;}
     catch(e){if(i>=2||!e.cause?.message.includes("Cannot read properties of null (reading 'tag')"))throw e;await wait(10000);}
   }
+  let checkName;
   for(let i=0;;i++){
-    try {await request(null,"/api/submissions","GET",undefined,401);break;}
-    catch(e){if(i>=12)throw e;await wait(2500);}
+    try {
+      checkName="unauthenticated submission guard";
+      await request(null,"/api/submissions","GET",undefined,401,5000);
+      checkName="synthetic session";
+      const session=await request(actors[0],"/api/auth/get-session","GET",undefined,200,5000);
+      check(session?.user?.id,actors[0].id,"staging session");
+      checkName="published revisions";
+      const revisions=await request(null,"/api/questionnaires/revisions","GET",undefined,200,5000);
+      if(!revisions?.revisions)throw new Error("Missing revision feed");
+      break;
+    } catch(e) {
+      if(i>=20)throw new Error(`Staging readiness (${checkName}): ${e.message}`);
+      await wait(3000);
+    }
   }
-  const session=await request(actors[0],"/api/auth/get-session");
-  check(session?.user?.id,actors[0].id,"staging session");
   report.isolation={customRoutes:0,cronTriggers:0,stagingD1:true,distinctBuckets:true,verifiedSyntheticSession:true};
   report.status="running";await persist();
-  await request(null,"/api/questionnaires/revisions");
   await phase("published_revisions",actors,cohort,async()=>{await request(null,"/api/questionnaires/revisions");});
   let pool=await phase("pretest_open",actors,cohort,async u=>{
     const result=await request(u,"/api/questionnaires/"+encodeURIComponent("pretest:"+u.subgameId)+"/sessions","POST",undefined,201);

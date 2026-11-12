@@ -14,9 +14,10 @@ type ApplicationWorker = {
 
 const application = app as ApplicationWorker;
 
-/** One active coordinator per Worker namespace, shared by every edge isolate. */
+/** This object only hands out capacity permits. The request and its I/O stay in the Worker. */
 export class D1FinalizationCoordinator extends DurableObject<CloudflareEnv> {
   private admission: RequestAdmission;
+  private permits = new Map<string, { release: () => void; timer: ReturnType<typeof setTimeout> }>();
 
   constructor(ctx: DurableObjectState, env: CloudflareEnv) {
     super(ctx, env);
@@ -24,27 +25,31 @@ export class D1FinalizationCoordinator extends DurableObject<CloudflareEnv> {
     this.admission = new RequestAdmission(Number.isInteger(diagnosticLimit) && diagnosticLimit >= 1 && diagnosticLimit <= 20 ? diagnosticLimit : 20);
   }
 
+  private releasePermit(token: string) {
+    const permit = this.permits.get(token);
+    if (!permit) return;
+    clearTimeout(permit.timer);
+    this.permits.delete(token);
+    permit.release();
+  }
+
   async fetch(request: Request): Promise<Response> {
-    if (!isFinalizationRequest(request)) return new Response(null, { status: 404 });
-    const trace = request.headers.get("x-finalize-trace") ?? "";
-    const started = performance.now();
-    let stage = "queue";
+    const url = new URL(request.url);
+    if (request.method !== "POST" || url.origin !== "https://finalization.internal") return new Response(null, { status: 404 });
+    if (url.pathname === "/release") {
+      this.releasePermit(url.searchParams.get("token") ?? "");
+      return new Response(null, { status: 204 });
+    }
+    if (url.pathname !== "/acquire") return new Response(null, { status: 404 });
+    const token = crypto.randomUUID();
     try {
-      return await this.admission.run(() => {
-        stage = "handler";
-        if (finalizeDiagnosticsEnabled(this.env)) logFinalize(trace, "admitted", performance.now() - started);
-        return application.fetch(request, this.env, {
-          waitUntil: this.ctx.waitUntil.bind(this.ctx),
-          passThroughOnException() {},
-        } as ExecutionContext);
-      });
+      const release = await this.admission.reserve();
+      const timer = setTimeout(() => this.releasePermit(token), 120_000);
+      this.permits.set(token, { release, timer });
+      return Response.json({ token });
     } catch (error) {
-      if (!(error instanceof AdmissionBusyError)) {
-        logFinalize(trace, stage, performance.now() - started, error);
-        throw error;
-      }
-      if (finalizeDiagnosticsEnabled(this.env)) logFinalize(trace, "queue_full_or_expired", performance.now() - started);
-      return databaseBusyResponse();
+      if (error instanceof AdmissionBusyError) return databaseBusyResponse();
+      throw error;
     }
   }
 }
@@ -75,14 +80,36 @@ export default {
         const headers = new Headers(request.headers);
         headers.set("x-finalize-trace", trace);
         let result: Response;
+        let permit: string | undefined;
+        let stage = "coordinator_acquire";
+        const coordinator = () => env.D1_FINALIZATION.get(
+          env.D1_FINALIZATION.idFromName("finalization-v2"), { locationHint: "apac" },
+        );
         try {
-          const coordinator = env.D1_FINALIZATION.get(env.D1_FINALIZATION.idFromName("finalization-v1"), { locationHint: "apac" });
-          result = await coordinator.fetch(new Request(request, { headers }));
+          const admission = await coordinator().fetch("https://finalization.internal/acquire", { method: "POST" });
+          if (!admission.ok) result = admission;
+          else {
+            const body = await admission.json<{ token: string }>();
+            if (!/^[a-f0-9-]{36}$/.test(body.token)) throw new Error("Finalization permit is invalid");
+            permit = body.token;
+            stage = "worker_handler";
+            if (finalizeDiagnosticsEnabled(env)) logFinalize(trace, "admitted", performance.now() - started);
+            result = await application.fetch(new Request(request, { headers }), env, context);
+          }
         } catch (error) {
-          logFinalize(trace, "coordinator_rpc", performance.now() - started, error);
+          logFinalize(trace, stage, performance.now() - started, error);
           result = isRetryableD1Error(error) ? databaseBusyResponse() : Response.json(
             { code: "SUBMISSION_RESULT_UNKNOWN" }, { status: 500, headers: { "Cache-Control": "no-store" } },
           );
+        } finally {
+          if (permit) {
+            const releaseUrl = `https://finalization.internal/release?token=${encodeURIComponent(permit)}`;
+            context.waitUntil(Promise.resolve().then(() =>
+              coordinator().fetch(releaseUrl, { method: "POST" }),
+            ).then(response => response.body?.cancel()).catch(error => {
+              logFinalize(trace, "coordinator_release", performance.now() - started, error);
+            }));
+          }
         }
         const response = withSecurityHeaders(result, request);
         response.headers.set("x-finalize-trace", trace);

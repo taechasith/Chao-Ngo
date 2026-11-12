@@ -36,6 +36,19 @@ describe("global finalization admission", () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it("reserves capacity without running a handler and releases only once", async () => {
+    const admission = new RequestAdmission(1, 1);
+    const release = await admission.reserve();
+    const second = admission.reserve();
+    release();
+    const releaseSecond = await second;
+    const queued = admission.reserve();
+    release();
+    await expect(admission.reserve()).rejects.toBeInstanceOf(AdmissionBusyError);
+    releaseSecond();
+    (await queued)();
+  });
+
   it("coordinates only finalization POSTs, retaining the normal public/auth routes", () => {
     expect(isFinalizationRequest(new Request("https://example.test/api/submissions/id/finalize", { method: "POST" }))).toBe(true);
     for (const path of ["/api/auth/sign-in/social", "/api/submissions/id/uploads", "/play", "/api/submissions/id/finalize/other"]) {

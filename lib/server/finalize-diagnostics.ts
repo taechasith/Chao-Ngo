@@ -11,6 +11,8 @@ export function logFinalize(trace: string, stage: string, elapsedMs: number, err
     : isD1Overload(error) ? "storage_overloaded"
     : isRetryableD1Error(error) ? "d1_transient"
     : flags.retryable === true ? "platform_retryable"
+    : error instanceof Error && /too many (?:subrequests|api requests)/i.test(error.message) ? "subrequest_limit"
+    : error instanceof Error && /on behalf of a different request/i.test(error.message) ? "cross_request_io"
     : error instanceof TypeError ? "type_error" : "unexpected";
   // Keep line/column hints, never log query text, exception messages, headers or player data.
   const frames = error instanceof Error ? error.stack?.split("\n").slice(1, 5)
