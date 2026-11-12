@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { caseRoutes } from '../../lib/question-pack';
 import { PretestRequestError, pretestErrorMessage, pretestRequest } from '../../lib/client/pretest-request';
+import { fetchWithDatabaseRetry } from '../../lib/client/database-retry';
 import { useAnswerAutosave } from '../../lib/client/use-answer-autosave';
 import { compatibleQuestion, useLiveQuestionnaire, type LiveForm } from '../../lib/client/use-live-questionnaire';
 import { QuestionnairePanel } from './submit-flow';
@@ -74,7 +75,7 @@ export function CasePretestGate({ children, subgameId }: { children: ReactNode; 
         setMessage('');
         if (await live.refresh()) { setMessage('คำถามเปลี่ยนแล้ว กรุณาทบทวนฉบับใหม่ก่อนเริ่มคดี'); return false; }
         if (!(await saver.flush(current.sessionId))) { setMessage('ยังบันทึกคำตอบไม่ครบ ลองอีกครั้งเมื่อเครือข่ายพร้อม'); return false; }
-        const response = await fetch(`/api/questionnaire-sessions/${current.sessionId}/complete`, { method: 'POST', credentials: 'same-origin' });
+        const response = await fetchWithDatabaseRetry(`/api/questionnaire-sessions/${current.sessionId}/complete`, { method: 'POST', credentials: 'same-origin' });
         if (!response.ok) { setMessage(response.status === 400 ? 'กรุณาตอบข้อบังคับให้ครบ เลือก “ยังไม่แน่ใจ” ได้' : 'ยังบันทึกไม่ได้ กรุณาลองอีกครั้ง'); return false; }
         saver.forget(current.sessionId); setReady(true); return true;
       }} /></fieldset> : null}

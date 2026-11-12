@@ -48,3 +48,8 @@ export class RequestAdmission {
 export function isFinalizationRequest(request: Request): boolean {
   return request.method === "POST" && /^\/api\/submissions\/[^/]+\/finalize\/?$/.test(new URL(request.url).pathname);
 }
+
+export function isCoordinatedWrite(request: Request): boolean {
+  if (request.method !== "POST") return false;
+  return isFinalizationRequest(request) || /^\/api\/questionnaire-sessions\/[^/]+\/complete\/?$/.test(new URL(request.url).pathname);
+}

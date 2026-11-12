@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { AdmissionBusyError, isFinalizationRequest, RequestAdmission } from "./request-admission";
+import { AdmissionBusyError, isCoordinatedWrite, isFinalizationRequest, RequestAdmission } from "./request-admission";
 
 describe("global finalization admission", () => {
   it("runs 1,000 callers in order with at most 20 active and preserves each result", async () => {
@@ -49,10 +49,12 @@ describe("global finalization admission", () => {
     (await queued)();
   });
 
-  it("coordinates only finalization POSTs, retaining the normal public/auth routes", () => {
+  it("coordinates only finalization and completion POSTs, retaining the normal public/auth routes", () => {
     expect(isFinalizationRequest(new Request("https://example.test/api/submissions/id/finalize", { method: "POST" }))).toBe(true);
+    expect(isCoordinatedWrite(new Request("https://example.test/api/questionnaire-sessions/id/complete", { method: "POST" }))).toBe(true);
+    expect(isCoordinatedWrite(new Request("https://example.test/api/questionnaire-sessions/id/complete"))).toBe(false);
     for (const path of ["/api/auth/sign-in/social", "/api/submissions/id/uploads", "/play", "/api/submissions/id/finalize/other"]) {
-      expect(isFinalizationRequest(new Request(`https://example.test${path}`, { method: "POST" }))).toBe(false);
+      expect(isCoordinatedWrite(new Request(`https://example.test${path}`, { method: "POST" }))).toBe(false);
     }
     expect(isFinalizationRequest(new Request("https://example.test/api/submissions/id/finalize"))).toBe(false);
   });

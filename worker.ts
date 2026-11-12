@@ -6,7 +6,7 @@ import { finalizeDiagnosticsEnabled, logFinalize } from "./lib/server/finalize-d
 import { cleanExpiredResearch } from "./lib/server/research-cleanup";
 import { withSecurityHeaders } from "./lib/server/security-headers";
 import { databaseBusyResponse, isRetryableD1Error } from "./lib/server/d1-overload";
-import { AdmissionBusyError, isFinalizationRequest, RequestAdmission } from "./lib/server/request-admission";
+import { AdmissionBusyError, isCoordinatedWrite, RequestAdmission } from "./lib/server/request-admission";
 
 type ApplicationWorker = {
   fetch(request: Request, env: CloudflareEnv, context: ExecutionContext): Promise<Response>;
@@ -74,7 +74,7 @@ async function fetchApplication(request: Request, env: CloudflareEnv, context: E
 export default {
   async fetch(request: Request, env: CloudflareEnv, context: ExecutionContext) {
     try {
-      if (isFinalizationRequest(request)) {
+      if (isCoordinatedWrite(request)) {
         const trace = crypto.randomUUID();
         const started = performance.now();
         const headers = new Headers(request.headers);
@@ -99,7 +99,7 @@ export default {
         } catch (error) {
           logFinalize(trace, stage, performance.now() - started, error);
           result = isRetryableD1Error(error) ? databaseBusyResponse() : Response.json(
-            { code: "SUBMISSION_RESULT_UNKNOWN" }, { status: 500, headers: { "Cache-Control": "no-store" } },
+            { code: "WRITE_RESULT_UNKNOWN" }, { status: 500, headers: { "Cache-Control": "no-store" } },
           );
         } finally {
           if (permit) {

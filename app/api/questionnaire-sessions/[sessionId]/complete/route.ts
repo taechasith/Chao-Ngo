@@ -57,22 +57,21 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
   if (!(await isWithinPlayerMutationLimit(participant.userId, "questionnaire-complete", 12))) return noStoreResponse({ code: "REQUEST_RATE_LIMITED" }, 429);
 
   const { sessionId } = await context.params;
-  const session = await env.DB.prepare(
-    `SELECT questionnaire_sessions.questionnaire_id,
-            questionnaire_sessions.completed_at, questionnaire_sessions.closed_at,
-            questionnaires.questionnaire_key,
-            questionnaires.version AS questionnaire_version
-       FROM questionnaire_sessions
-       INNER JOIN questionnaires ON questionnaires.id = questionnaire_sessions.questionnaire_id
-      WHERE questionnaire_sessions.id = ? AND questionnaire_sessions.user_id = ?`,
-  )
-    .bind(sessionId, participant.userId)
-    .first<{
-      completed_at: string | null; closed_at: string | null;
-      questionnaire_id: string;
-      questionnaire_key: string;
-      questionnaire_version: string;
-    }>();
+  type SessionRow = { completed_at: string | null; closed_at: string | null; questionnaire_id: string;
+    questionnaire_key: string; questionnaire_version: string };
+  const [sessionResult, questionResult] = await env.DB.batch([
+    env.DB.prepare(`SELECT s.questionnaire_id, s.completed_at, s.closed_at,
+        q.questionnaire_key, q.version AS questionnaire_version
+      FROM questionnaire_sessions s JOIN questionnaires q ON q.id = s.questionnaire_id
+      WHERE s.id = ? AND s.user_id = ?`).bind(sessionId, participant.userId),
+    env.DB.prepare(`SELECT q.id, q.question_key, q.type, q.required, q.options_json, r.value_json
+      FROM questionnaire_sessions s JOIN questions q ON q.questionnaire_id = s.questionnaire_id
+      LEFT JOIN responses r ON r.question_id = q.id AND r.session_id = s.id
+      WHERE s.id = ? AND s.user_id = ? AND s.completed_at IS NULL AND s.closed_at IS NULL
+      ORDER BY q.sort_order ASC`).bind(sessionId, participant.userId),
+  ]);
+  const session = sessionResult.results[0] as SessionRow | undefined;
+  const questions = questionResult.results as QuestionRow[];
 
   if (!session) {
     return noStoreResponse({ code: "QUESTIONNAIRE_SESSION_NOT_FOUND" }, 404);
@@ -97,18 +96,9 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
   if (session.closed_at) return noStoreResponse({ code: "QUESTIONNAIRE_SESSION_COMPLETED" }, 409);
 
   if (session.questionnaire_key !== "pregame") {
-    const rows = await env.DB.prepare(
-      `SELECT questions.id, questions.question_key, questions.type, questions.required,
-              questions.options_json, responses.value_json
-         FROM questions
-         LEFT JOIN responses ON responses.question_id = questions.id AND responses.session_id = ?
-        WHERE questions.questionnaire_id = ?
-        ORDER BY questions.sort_order ASC`,
-    ).bind(sessionId, session.questionnaire_id).all<QuestionRow>();
-
     const missing: string[] = [];
     const invalid: string[] = [];
-    for (const question of rows.results) {
+    for (const question of questions) {
       if (!question.value_json) {
         if (question.required === 1) missing.push(question.question_key);
         continue;
@@ -128,7 +118,7 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
       return noStoreResponse({ code: "QUESTIONNAIRE_INCOMPLETE", invalidQuestionKeys: invalid, missingQuestionKeys: missing }, 400);
     }
 
-    await env.DB.batch([
+    const [completion] = await env.DB.batch([
       env.DB.prepare(
         `UPDATE questionnaire_sessions SET completed_at = CURRENT_TIMESTAMP
           WHERE id = ? AND user_id = ? AND completed_at IS NULL AND closed_at IS NULL`,
@@ -145,26 +135,20 @@ async function handlePOST(request: Request, context: RouteContext): Promise<Resp
       ),
     ]);
 
+    if (!completion.meta.changes) {
+      const current = await env.DB.prepare("SELECT completed_at FROM questionnaire_sessions WHERE id=? AND user_id=?")
+        .bind(sessionId, participant.userId).first<{ completed_at: string | null }>();
+      return current?.completed_at ? noStoreResponse({ status: "already_completed" })
+        : noStoreResponse({ code: "QUESTIONNAIRE_SESSION_COMPLETED" }, 409);
+    }
     return noStoreResponse({ status: "completed" });
   }
-
-  const questionRows = await env.DB.prepare(
-    `SELECT questions.id, questions.question_key, questions.type, questions.required,
-            questions.options_json, responses.value_json
-       FROM questions
-       LEFT JOIN responses
-         ON responses.question_id = questions.id AND responses.session_id = ?
-      WHERE questions.questionnaire_id = ?
-      ORDER BY questions.sort_order ASC`,
-  )
-    .bind(sessionId, session.questionnaire_id)
-    .all<QuestionRow>();
 
   const answers = new Map<string, unknown>();
   const invalidQuestionKeys: string[] = [];
   const missingQuestionKeys: string[] = [];
 
-  for (const question of questionRows.results) {
+  for (const question of questions) {
     if (!question.value_json) {
       if (question.required === 1) {
         missingQuestionKeys.push(question.question_key);

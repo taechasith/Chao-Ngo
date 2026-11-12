@@ -348,7 +348,7 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
     }
     if (!(await saver.flush(form.sessionId))) return false;
     try {
-      const response = await fetch(`/api/questionnaire-sessions/${form.sessionId}/complete`, {
+      const response = await fetchWithDatabaseRetry(`/api/questionnaire-sessions/${form.sessionId}/complete`, {
         credentials: "same-origin",
         method: "POST",
       });
