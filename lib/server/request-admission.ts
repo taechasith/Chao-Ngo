@@ -50,6 +50,9 @@ export function isFinalizationRequest(request: Request): boolean {
 }
 
 export function isCoordinatedWrite(request: Request): boolean {
+  const path = new URL(request.url).pathname;
+  if (request.method === "PATCH" && /^\/api\/submissions\/[^/]+\/preparation\/?$/.test(path)) return true;
+  if (["POST", "DELETE"].includes(request.method) && /^\/api\/submissions\/[^/]+\/acknowledgement\/?$/.test(path)) return true;
   if (request.method !== "POST") return false;
   return isFinalizationRequest(request) || /^\/api\/submissions\/?$/.test(new URL(request.url).pathname) || /^\/api\/questionnaire-sessions\/[^/]+\/complete\/?$/.test(new URL(request.url).pathname);
 }

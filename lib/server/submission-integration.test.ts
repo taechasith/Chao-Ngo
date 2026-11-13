@@ -131,6 +131,16 @@ describe("B6 legacy instruments retain real D1/private R2 contracts", () => {
     expect((await upload(fileRequest(), context(id))).status).toBe(403);
     expect((await acknowledge(request("POST", { acknowledged: true, consentVersion: "old" }), context(id))).status).toBe(400);
     expect((await acknowledge(request("POST", { acknowledged: true, consentVersion: aiChatUploadConsentVersion }), context(id))).status).toBe(201);
+    const acknowledgement = { acknowledged: true, consentVersion: aiChatUploadConsentVersion };
+    const readAcknowledgement = () => env.DB.prepare(
+      "SELECT id, acknowledged_at FROM submission_consent_acknowledgements WHERE submission_id = ?",
+    ).bind(id).first();
+    await env.DB.prepare("UPDATE submission_consent_acknowledgements SET acknowledged_at = '2026-01-01 00:00:00' WHERE submission_id = ?")
+      .bind(id).run();
+    const original = await readAcknowledgement();
+    expect((await acknowledge(request("POST", acknowledgement, stranger), context(id))).status).toBe(404);
+    expect((await acknowledge(request("POST", acknowledgement), context(id))).status).toBe(201);
+    expect(await readAcknowledgement()).toEqual(original);
     expect((await upload(fileRequest(pdf, "text/html"), context(id))).status).toBe(400);
     expect((await upload(fileRequest(pdf, "application/pdf", "chat.html"), context(id))).status).toBe(400);
     expect((await upload(fileRequest(new TextEncoder().encode("not a real PDF document")), context(id))).status).toBe(400);

@@ -218,6 +218,7 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
   const [saving, setSaving] = useState(false);
   const [receiptRecovery, setReceiptRecovery] = useState<"unconfirmed" | "reauth" | null>(null);
   const sending = useRef(false);
+  const savingAcknowledgement = useRef(false);
   const [aiPdfNotice, setAiPdfNotice] = useState("");
   const [researchReady, setResearchReady] = useState<boolean | null>(null);
   const { saver, status: answerSaveState, pendingCount } = useAnswerAutosave(setMessage);
@@ -378,10 +379,11 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
 
   async function updateAcknowledgement(next: boolean) {
     const current = submissionRef.current;
-    if (!current || acknowledgementPending || !current.requirements.requiresAiChatPdf) return;
+    if (!current || savingAcknowledgement.current || !current.requirements.requiresAiChatPdf) return;
+    savingAcknowledgement.current = true;
     setAcknowledgementPending(true);
     try {
-      const response = await fetch(`/api/submissions/${current.submissionId}/acknowledgement`, {
+      const response = await fetchWithDatabaseRetry(`/api/submissions/${current.submissionId}/acknowledgement`, {
         body: next ? JSON.stringify({ acknowledged: true, consentVersion: aiChatUploadConsentVersion }) : undefined,
         credentials: "same-origin",
         headers: next ? { "Content-Type": "application/json" } : undefined,
@@ -392,14 +394,16 @@ export function SubmitFlow({ initialSubgameId = "", assistantUrls }: { initialSu
         setMessage(thaiError(result.code ?? ""));
         return;
       }
+      if (submissionRef.current?.submissionId !== current.submissionId) return;
       setAcknowledged(next);
-      setSubmission((value) => value ? {
+      setSubmission((value) => value?.submissionId === current.submissionId ? {
         ...value,
         acknowledgement: next ? { acknowledged_at: new Date().toISOString() } : null,
       } : value);
     } catch {
       setMessage("บันทึกการยืนยันไม่ได้ กรุณาลองอีกครั้ง");
     } finally {
+      savingAcknowledgement.current = false;
       setAcknowledgementPending(false);
     }
   }

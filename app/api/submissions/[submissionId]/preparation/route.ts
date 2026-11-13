@@ -15,10 +15,6 @@ async function handlePATCH(request: Request, context: { params: Promise<{ submis
   if (participant instanceof Response) return participant;
   if (!(await isWithinPlayerMutationLimit(participant.userId, "submission-preparation", 30))) return json({ code: "REQUEST_RATE_LIMITED" }, 429);
   const { submissionId } = await context.params;
-  const draft = await env.DB.prepare("SELECT status FROM submissions WHERE id = ? AND user_id = ?")
-    .bind(submissionId, participant.userId).first<{ status: string }>();
-  if (!draft) return json({ code: "SUBMISSION_NOT_FOUND" }, 404);
-  if (draft.status !== "draft") return json({ code: "SUBMISSION_NOT_DRAFT" }, 409);
   const body = await readBoundedJson(request, 12_000) as { aiCompanionUsed?: unknown; additionalAiLinks?: unknown } | null;
   if (!body || typeof body.aiCompanionUsed !== "boolean") return json({ code: "INVALID_AI_PREPARATION" }, 400);
   const links = parseAdditionalAiLinks(body.additionalAiLinks);
@@ -27,7 +23,11 @@ async function handlePATCH(request: Request, context: { params: Promise<{ submis
     ai_companion_confirmed_at = CASE WHEN ? = 1 THEN COALESCE(ai_companion_confirmed_at, CURRENT_TIMESTAMP) ELSE NULL END,
     updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ? AND status = 'draft'`)
     .bind(JSON.stringify(links), body.aiCompanionUsed ? 1 : 0, submissionId, participant.userId).run();
-  if (!result.meta.changes) return json({ code: "SUBMISSION_NOT_DRAFT" }, 409);
+  if (!result.meta.changes) {
+    const existing = await env.DB.prepare("SELECT 1 FROM submissions WHERE id = ? AND user_id = ?")
+      .bind(submissionId, participant.userId).first();
+    return existing ? json({ code: "SUBMISSION_NOT_DRAFT" }, 409) : json({ code: "SUBMISSION_NOT_FOUND" }, 404);
+  }
   return json({ preparation: { aiCompanionUsed: body.aiCompanionUsed, additionalAiLinks: links } });
 }
 export const PATCH = withD1RetryableErrorHandling(handlePATCH);

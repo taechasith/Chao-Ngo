@@ -5,7 +5,6 @@ import { aiChatUploadConsentVersion } from "../../../../../lib/server/research-c
 import { readBoundedJson } from "../../../../../lib/server/questionnaires/request";
 import { isSameOriginRequest } from "../../../../../lib/server/request-security";
 import { isWithinPlayerMutationLimit } from "../../../../../lib/server/request-limits";
-import { getSubmissionRequirements } from "../../../../../lib/server/submissions/requirements";
 
 export const dynamic = "force-dynamic";
 
@@ -17,8 +16,8 @@ function response(body: Record<string, unknown>, status = 200): Response {
 
 async function draftForUser(submissionId: string, userId: string) {
   return env.DB.prepare(
-    "SELECT id, subgame_id, questionnaire_session_id FROM submissions WHERE id = ? AND user_id = ? AND status = 'draft'",
-  ).bind(submissionId, userId).first<{ id: string; subgame_id: string; questionnaire_session_id: string | null }>();
+    "SELECT id FROM submissions WHERE id = ? AND user_id = ? AND status = 'draft'",
+  ).bind(submissionId, userId).first<{ id: string }>();
 }
 
 export async function POST(request: Request, context: RouteContext): Promise<Response> {
@@ -28,12 +27,6 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
   if (!(await isWithinPlayerMutationLimit(participant.userId, "submission-acknowledgement", 12))) return response({ code: "REQUEST_RATE_LIMITED" }, 429);
 
   const { submissionId } = await context.params;
-  const draft = await draftForUser(submissionId, participant.userId);
-  if (!draft) return response({ code: "DRAFT_NOT_FOUND" }, 404);
-  if (!(await getSubmissionRequirements(env.DB, draft.subgame_id, draft.questionnaire_session_id)).requiresAiChatPdf) {
-    return response({ code: "ACKNOWLEDGEMENT_NOT_REQUIRED" }, 409);
-  }
-
   const body = await readBoundedJson(request, 1_024);
   if (typeof body !== "object" || body === null) return response({ code: "INVALID_ACKNOWLEDGEMENT" }, 400);
   const input = body as { acknowledged?: unknown; consentVersion?: unknown };
@@ -41,16 +34,22 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     return response({ code: "ACKNOWLEDGEMENT_REQUIRED" }, 400);
   }
 
-  await env.DB.prepare(
+  // The current submission policy requires an AI conversation PDF for every case.
+  const result = await env.DB.prepare(
     `INSERT INTO submission_consent_acknowledgements (id, submission_id, user_id, consent_version)
      SELECT ?, ?, ?, ?
      WHERE EXISTS (SELECT 1 FROM submissions WHERE id = ? AND user_id = ? AND status = 'draft')
      ON CONFLICT(submission_id) DO UPDATE SET
        user_id = excluded.user_id,
        consent_version = excluded.consent_version,
-       acknowledged_at = CURRENT_TIMESTAMP`,
+       acknowledged_at = CASE
+         WHEN submission_consent_acknowledgements.consent_version = excluded.consent_version
+           THEN submission_consent_acknowledgements.acknowledged_at
+         ELSE CURRENT_TIMESTAMP
+       END`,
   ).bind(crypto.randomUUID(), submissionId, participant.userId, aiChatUploadConsentVersion, submissionId, participant.userId).run();
 
+  if (!result.meta.changes) return response({ code: "DRAFT_NOT_FOUND" }, 404);
   return response({ status: "acknowledged" }, 201);
 }
 
@@ -63,10 +62,6 @@ export async function DELETE(request: Request, context: RouteContext): Promise<R
   const { submissionId } = await context.params;
   const draft = await draftForUser(submissionId, participant.userId);
   if (!draft) return response({ code: "DRAFT_NOT_FOUND" }, 404);
-  if (!(await getSubmissionRequirements(env.DB, draft.subgame_id, draft.questionnaire_session_id)).requiresAiChatPdf) {
-    return response({ code: "ACKNOWLEDGEMENT_NOT_REQUIRED" }, 409);
-  }
-
   const result = await env.DB.prepare(
     `DELETE FROM submission_consent_acknowledgements
       WHERE submission_id = ? AND user_id = ?

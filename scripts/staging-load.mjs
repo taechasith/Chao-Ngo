@@ -3,6 +3,7 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { spawn, spawnSync } from "node:child_process";
 import { randomUUID, randomBytes, createHmac, createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
+import { URL } from "node:url";
 
 const account = "c24fed68f8dc59cc339bd821d215bba8";
 const run = process.env.GITHUB_RUN_ID;
@@ -22,7 +23,7 @@ const api = `https://api.cloudflare.com/client/v4/accounts/${account}`;
 const testDir = `qa-results/${cohort}${cap === 20 ? "" : "-cap6"}`;
 const report = { cohort, cap, commit:process.env.GITHUB_SHA, status:"starting", startedAt:new Date().toISOString(),
   scope:"Isolated Cloudflare Worker/D1/R2; QA fixtures and real Better Auth session verification. No Google OAuth or production traffic.",
-  resources:{worker:name, database:name, privateBucket, publicBucket}, phases:[], cleanup:[], failedFinalize:[], diagnostics:[] };
+  resources:{worker:name, database:name, privateBucket, publicBucket}, phases:[], cleanup:[], failedFinalize:[], diagnostics:[], failedRequests:[] };
 let databaseId;
 let origin;
 let workerCreated = false;
@@ -47,7 +48,7 @@ function startTail() {
           for(const part of log.message??[]) {
             if(typeof part!=="string" || !part.startsWith('{"event":"submission_finalize"'))continue;
             const row=JSON.parse(part);
-            if(/^[a-f0-9-]{36}$/.test(row.trace??"") && /^[a-z0-9_:]+$/.test(row.stage??"") && report.diagnostics.length<6000)
+            if(/^[a-f0-9-]{36}$/.test(row.trace??"") && /^[a-z0-9_:]+$/.test(row.stage??"") && report.diagnostics.length<30000)
               report.diagnostics.push({trace:row.trace,stage:row.stage,elapsedMs:row.elapsedMs,category:row.category,frames:row.frames});
           }
         }
@@ -113,9 +114,12 @@ async function request(actor,path,method="GET",body,expected=200,timeoutMs=90_00
     });
     const data=await response.json().catch(()=>null);
     if(response.status!==expected) {
+      const header=response.headers.get("x-finalize-trace");
+      const trace=/^[a-f0-9-]{36}$/.test(header??"")?header:undefined;
+      report.failedRequests.push({method, route:path.replace(/stage-[^/]+|[a-f0-9-]{36}/g,"<id>"), http:response.status, code:data?.code,
+        trace});
       if(method==="POST" && path.endsWith("/finalize")) {
-        const trace=response.headers.get("x-finalize-trace");
-        report.failedFinalize.push({actor:actor.index+1,http:response.status,code:data?.code,trace:/^[a-f0-9-]{36}$/.test(trace??"")?trace:undefined});
+        report.failedFinalize.push({actor:actor.index+1,http:response.status,code:data?.code,trace});
       }
       throw new Error(`HTTP ${response.status} ${data?.code??""}`.trim());
     }
@@ -267,11 +271,16 @@ try {
       if(!revisions?.revisions)throw new Error("Missing revision feed");
       break;
     } catch(e) {
-      if(i>=20)throw new Error(`Staging readiness (${checkName}): ${e.message}`);
+      if(i>=20)throw new Error(`Staging readiness (${checkName}): ${e.message}`, {cause:e});
       await wait(3000);
     }
   }
   report.isolation={customRoutes:0,cronTriggers:0,stagingD1:true,distinctBuckets:true,verifiedSyntheticSession:true};
+  startTail();
+  await wait(3500);
+  await request(null,"/api/submissions","POST",{subgameId:actors[0].subgameId},401);
+  await wait(1000);
+  report.tailVerified=report.diagnostics.some(row=>row.stage==="worker:http_401");
   report.status="running";await persist();
   await phase("published_revisions",actors,cohort,async()=>{await request(null,"/api/questionnaires/revisions");});
   let pool=await phase("pretest_open",actors,cohort,async u=>{
@@ -291,10 +300,11 @@ try {
     u.answer="Staging autosave "+u.id;
     await request(u,`/api/questionnaire-sessions/${u.draft.answerForm.sessionId}/responses`,"PUT",{questionId:u.question,value:u.answer});
   });
-  pool=await phase("ai_confirm_and_ack",pool,cohort,async u=>{
-    const path=`/api/submissions/${u.draft.submissionId}`;
-    await request(u,path+"/preparation","PATCH",{aiCompanionUsed:true,additionalAiLinks:[]});
-    await request(u,path+"/acknowledgement","POST",{acknowledged:true,consentVersion:pdfVersion},201);
+  pool=await phase("ai_preparation",pool,cohort,async u=>{
+    await request(u,`/api/submissions/${u.draft.submissionId}/preparation`,"PATCH",{aiCompanionUsed:true,additionalAiLinks:[]});
+  });
+  pool=await phase("pdf_acknowledgement",pool,cohort,async u=>{
+    await request(u,`/api/submissions/${u.draft.submissionId}/acknowledgement`,"POST",{acknowledged:true,consentVersion:pdfVersion},201);
   });
   pool=await phase("answer_and_posttest_complete",pool,cohort,async u=>{
     for(const form of [u.draft.answerForm,u.draft.posttestForm])await request(u,`/api/questionnaire-sessions/${form.sessionId}/complete`,"POST");
@@ -306,8 +316,6 @@ try {
     u.digest=createHash("sha256").update(bytes).digest("hex");u.bytes=bytes.length;
     u.uploadId=(await request(u,`/api/submissions/${u.draft.submissionId}/uploads`,"POST",form,201)).upload.id;
   });
-  startTail();
-  await wait(3500);
   const finalizing=pool;
   pool=await phase("finalize_burst_fifo",pool,cohort,async u=>{
     const receipt=await request(u,`/api/submissions/${u.draft.submissionId}/finalize`,"POST",undefined,201);
@@ -331,6 +339,8 @@ try {
     check(submission.status,"submitted","receipt status");
     check(submission.answerForm.responses[u.question],u.answer,"autosave readback");
     check(submission.uploads.aiChatPdf.id,u.uploadId,"receipt PDF");
+    check(submission.preparation.aiCompanionUsed,true,"AI confirmation readback");
+    if(!submission.acknowledgement?.acknowledged_at)throw new Error("Missing PDF acknowledgement on readback");
   });
   await phase("repeat_finalize_sample",pool.slice(0,20),20,async u=>{
     const result=await request(u,`/api/submissions/${u.draft.submissionId}/finalize`,"POST");
