@@ -36,8 +36,6 @@ async function handlePUT(request: Request, context: RouteContext): Promise<Respo
   if (participant instanceof Response) {
     return participant;
   }
-  if (!(await isWithinPlayerMutationLimit(participant.userId, "questionnaire-response", 90))) return noStoreResponse({ code: "REQUEST_RATE_LIMITED" }, 429);
-
   const body = await readBoundedJson(request);
   const parsed = responseInputSchema.safeParse(body);
 
@@ -46,15 +44,19 @@ async function handlePUT(request: Request, context: RouteContext): Promise<Respo
   }
 
   const { sessionId } = await context.params;
-  const session = await env.DB.prepare(
-    `SELECT s.questionnaire_id, s.completed_at, s.closed_at,
-            q.id AS question_id, q.question_key, q.type, q.required, q.options_json
-       FROM questionnaire_sessions s
-       LEFT JOIN questions q ON q.questionnaire_id = s.questionnaire_id AND q.id = ?
-      WHERE s.id = ? AND s.user_id = ?`,
-  )
-    .bind(parsed.data.questionId, sessionId, participant.userId)
-    .first<{ closed_at: string | null; completed_at: string | null; questionnaire_id: string; question_id: string | null; question_key: string; type: QuestionType; required: number; options_json: string }>();
+  const [session, allowed] = await Promise.all([
+    env.DB.prepare(
+      `SELECT s.questionnaire_id, s.completed_at, s.closed_at,
+              q.id AS question_id, q.question_key, q.type, q.required, q.options_json
+         FROM questionnaire_sessions s
+         LEFT JOIN questions q ON q.questionnaire_id = s.questionnaire_id AND q.id = ?
+        WHERE s.id = ? AND s.user_id = ?`,
+    )
+      .bind(parsed.data.questionId, sessionId, participant.userId)
+      .first<{ closed_at: string | null; completed_at: string | null; questionnaire_id: string; question_id: string | null; question_key: string; type: QuestionType; required: number; options_json: string }>(),
+    isWithinPlayerMutationLimit(participant.userId, "questionnaire-response", 90),
+  ]);
+  if (!allowed) return noStoreResponse({ code: "REQUEST_RATE_LIMITED" }, 429);
 
   if (!session) {
     return noStoreResponse({ code: "QUESTIONNAIRE_SESSION_NOT_FOUND" }, 404);

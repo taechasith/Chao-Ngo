@@ -59,6 +59,9 @@ describe("global finalization admission", () => {
       expect(isCoordinatedWrite(new Request(`https://example.test/api/submissions/id/${suffix}`, { method }))).toBe(true);
       expect(isCoordinatedWrite(new Request(`https://example.test/api/submissions/id/${suffix}`))).toBe(false);
     }
+    const responses = "https://example.test/api/questionnaire-sessions/id/responses";
+    expect(isCoordinatedWrite(new Request(responses, { method: "PUT" }))).toBe(true);
+    expect(isCoordinatedWrite(new Request(responses, { method: "GET" }))).toBe(false);
     for (const key of ["pretest:subgame-example", "pretest%3Asubgame-example", "pretest%3asubgame-example"]) {
       const url = `https://example.test/api/questionnaires/${key}/sessions`;
       expect(isCoordinatedWrite(new Request(url, { method: "POST" }))).toBe(true);
