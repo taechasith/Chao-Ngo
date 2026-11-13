@@ -4,6 +4,8 @@ export function isD1Overload(error: unknown): boolean {
   let current = error;
   while (current instanceof Error && !seen.has(current)) {
     seen.add(current);
+    if ("code" in current && (current.code === 7429 || current.code === "7429")) return true;
+    if (/\bD1(?:_ERROR| DB)\b[^\n]*\b7429\b/i.test(current.message)) return true;
     if (/D1(?:_ERROR| DB).*overloaded|requests queued for too long/i.test(current.message)) return true;
     current = current.cause;
   }

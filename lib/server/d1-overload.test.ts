@@ -5,6 +5,8 @@ describe("D1 overload response", () => {
   it("recognizes the wrapped D1 queue error but never masks other failures", async () => {
     const overload = new Error("query failed", { cause: new Error("D1_ERROR: D1 DB is overloaded. Requests queued for too long.") });
     expect(isD1Overload(overload)).toBe(true);
+    expect(isD1Overload(new Error("D1_ERROR: code 7429"))).toBe(true);
+    expect(isD1Overload(new Error("D1_ERROR: code 7500"))).toBe(false);
     const reply = await withD1RetryableErrorHandling(async () => { throw overload; })();
     expect(reply.status).toBe(503);
     expect(reply.headers.get("Retry-After")).toBe("2");

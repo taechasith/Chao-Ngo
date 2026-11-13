@@ -54,5 +54,7 @@ export function isCoordinatedWrite(request: Request): boolean {
   if (request.method === "PATCH" && /^\/api\/submissions\/[^/]+\/preparation\/?$/.test(path)) return true;
   if (["POST", "DELETE"].includes(request.method) && /^\/api\/submissions\/[^/]+\/acknowledgement\/?$/.test(path)) return true;
   if (request.method !== "POST") return false;
-  return isFinalizationRequest(request) || /^\/api\/submissions\/?$/.test(new URL(request.url).pathname) || /^\/api\/questionnaire-sessions\/[^/]+\/complete\/?$/.test(new URL(request.url).pathname);
+  return /^\/api\/submissions(?:\/[^/]+\/finalize)?\/?$/.test(path)
+    || /^\/api\/questionnaire-sessions\/[^/]+\/complete\/?$/.test(path)
+    || /^\/api\/questionnaires\/pretest(?::|%3A)subgame-[a-z0-9-]{1,47}\/sessions\/?$/i.test(path);
 }
